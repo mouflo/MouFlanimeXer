@@ -1,0 +1,14 @@
+[Unit]
+Description=MouFlanimexer Web Interface
+# Attend que le réseau et les montages du NAS soient prêts
+After=network.target remote-fs.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mouflanimexer
+ExecStart=/usr/bin/python3 /opt/mouflanimexer/mouflanimexer.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

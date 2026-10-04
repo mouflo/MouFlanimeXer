@@ -1,0 +1,228 @@
+# MouFlanimeXer 🎬✨
+
+[![License: MIT](https://img.shields.io/badge/Licence-MIT-yellow.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
+**Remuxeur automatique de fichiers anime MKV/MP4 avec retraitement avancé des sous-titres et polices.**
+
+Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples (français/japonais), unifie les styles typographiques, détecte les résolutions réelles cachées, et supporte l'OCR pour les sous-titres bitmap (PGS).
+
+## ✨ Fonctionnalités
+
+### Gestion Audio/Sous-titres
+- 🎵 **Réorganisation automatique** : audio japonais en priorité + défaut, français en 2e
+- 🚫 **Filtrage intelligent** : suppression de pistes audio parasites (CC, descriptive)
+- 📝 **Sous-titres ASS/SRT/PGS** : conversion et retraitement unifiés
+- 🔍 **Détection avancée** : identification des fausses résolutions déclarées, polices imposées (\fn)
+
+### Style et Typographie
+- 📐 **Redimensionnement précis** : rescaling de la résolution cible 1920x1080 avec calcul de facteur (ex: 640×360 → ×3)
+- 🎨 **Harmonisation des styles** : police Trebuchet MS 66px (dialogues), Arial 63px (incrustations)
+- ✏️ **Déflou automatique** : redimensionnement des effets \blur/\be selon facteur de scaling
+- 📏 **Marges personnalisées** : préservation intelligente des marges sur les lignes de dialogue
+- 🆎 **Polices manquantes** : détection avec upload UI, mémorisation dans `/opt/mouflanimexer/fonts`
+
+### Détection Intelligente
+- 🤖 **Heuristique poids de piste** : deux sous-titres FR identiques → la plus lourde = complète, la plus légère = forcée
+- 🏷️ **Classification automatique** : détecte "forcé" dans le nom même sans flag technique MKV
+- 🎯 **Styles personnalisés** : détecte le style de dialogue principal (Default, Dialogue, DIA, etc.) et l'applique partout
+- ⚠️ **Alertes flou** : notification dans le journal avec ligne/style/texte pour retrouver dans Aegisub
+
+### Intégrations & Automatisation
+- 📡 **Sonarr → Traitement → Emby** : watcher cron détecte nouveaux fichiers, traite en place, intègre à la biblio
+- 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus
+- 🔄 **Auto-déploiement GitHub** : git pull auto toutes les minutes, redémarrage du service si changements
+- 🌙 **Mode sombre** : interface web responsive avec toggle clair/sombre (localStorage)
+
+### Formats Supportés
+- 📦 **Conteneurs** : MKV (natif), MP4 (detection + conversion → MKV)
+- 📄 **Sous-titres** : ASS (retraitement), SRT (conversion → ASS), PGS (OCR → ASS)
+- 🎥 **OCR** : tesseract-ocr + tesseract-ocr-fra pour pistes bitmap
+
+## 🚀 Installation
+
+### Prérequis
+- Python 3.9+
+- FFmpeg / FFprobe
+- MKVToolNix (mkvmerge, mkvextract, mkvinfo)
+- Tesseract OCR (optionnel, pour sous-titres PGS)
+
+### Setup sur Proxmox/LXC
+
+\`\`\`bash
+# Cloner le dépôt
+git clone https://github.com/mouflo/mouflanimexer.git /opt/mouflanimexer
+cd /opt/mouflanimexer
+
+# Créer environnement virtuel
+python3 -m venv venv
+source venv/bin/activate
+
+# Installer dépendances
+pip install -r requirements.txt
+
+# Installer outils système
+sudo apt-get install ffmpeg mkvtoolnix tesseract-ocr tesseract-ocr-fra
+\`\`\`
+
+## 📖 Utilisation
+
+### Mode Interactif Web
+
+\`\`\`bash
+cd /opt/mouflanimexer
+source venv/bin/activate
+python3 mouflanimexer.py
+\`\`\`
+
+Puis accédez à \`http://localhost:5000\` (login: mouflo)
+
+**Flux:**
+1. **Scan** → détection de la série/saison
+2. **Affichage** → fichiers trouvés avec infos pistes
+3. **Questions interactives** → validation des choix ambigus (full/forcé, marges, polices)
+4. **Traitement** → remuxage et retraitement des sous-titres
+5. **Sortie** → fichiers finalisés dans \`FICHIER OK/\`, fichiers zappés dans \`À TRAITER/\`
+
+### Mode Watcher Sonarr (Automatisé)
+
+\`\`\`bash
+# Initialiser état des fichiers existants (UNE SEULE FOIS)
+python3 mouflanimexer.py --seed-sonarr-state
+
+# Puis ajouter à crontab (toutes les 2 minutes):
+*/2 * * * * /opt/mouflanimexer/venv/bin/python3 /opt/mouflanimexer/mouflanimexer.py --watch-sonarr >> /opt/mouflanimexer/watcher.log 2>&1
+\`\`\`
+
+### Mode Service Systemd
+
+\`\`\`bash
+# Créer service
+sudo systemctl enable mouflanimexer
+sudo systemctl start mouflanimexer
+sudo systemctl status mouflanimexer
+
+# Logs
+sudo journalctl -u mouflanimexer -f
+\`\`\`
+
+### Auto-déploiement GitHub
+
+Ajouter à crontab root (toutes les minutes):
+\`\`\`bash
+* * * * * /opt/mouflanimexer/deploy.sh >> /opt/mouflanimexer/deploy.log 2>&1
+\`\`\`
+
+## ⚙️ Configuration
+
+### Variables d'Environnement
+
+\`\`\`bash
+# Dossier racine des séries (NAS, local, etc.)
+ANIME_ROOT=/mnt/mouflosyno/Emby-Media/Manga
+
+# Dossier de sortie
+OUTPUT_DIR=/mnt/mouflosyno/Emby-Media/Manga  # Remplace en place (hardlinks Sonarr)
+
+# Dossier miroir optionnel (pour préserver la structure)
+MIRROR_DIR=/path/to/mirror
+
+# Style personnalisé pour les polices
+PLAYRES_X=1920
+PLAYRES_Y=1080
+DEFAULT_FONT="Trebuchet MS"
+DEFAULT_FONT_SIZE=66
+\`\`\`
+
+### telegram_config.json (Optionnel)
+
+\`\`\`json
+{
+  "enabled": true,
+  "bot_token": "123456:ABCDEFG...",
+  "chat_id": "123456789"
+}
+\`\`\`
+
+### excluded_series.json (Auto-généré)
+
+Géré via l'interface web → cases à cocher par série + sauvegarde automatique
+
+## 🎨 Interface Web
+
+### Fonctionnalités
+- ✅ Page de connexion (login: mouflo)
+- 📊 Affichage hiérarchique (Série/Saison/Épisode)
+- 🖼️ Miniatures vidéo générées par FFmpeg (repérage des problèmes)
+- ❓ Boîtes de question en rouge (repérage immédiat)
+- 📋 Journal scrollable + bouton télécharge en .txt
+- ⏸️ Pause/reprendre le traitement (thread-safe)
+- 🌙 Toggle clair/sombre
+- 📱 Responsive (mobile, tablette, desktop)
+
+## 📊 Architecture
+
+\`\`\`
+mouflanimexer/
+├── mouflanimexer.py         # Application principale
+├── requirements.txt          # Dépendances Python
+├── venv/                     # Environnement virtuel
+├── fonts/                    # Bibliothèque de polices (.ttf/.otf)
+├── static/                   # CSS, JS (interface web)
+├── templates/                # Templates HTML (Jinja2)
+├── deploy.sh                 # Script auto-déploiement GitHub
+├── telegram_config.json      # Config Telegram (hors git)
+├── excluded_series.json      # Séries ignorées (auto-généré)
+├── watcher.log              # Logs du watcher Sonarr
+├── deploy.log               # Logs déploiement auto
+└── FICHIER OK/              # Fichiers traités ✅
+\`\`\`
+
+## 🔄 Workflow Complet (Sonarr → Emby)
+
+1. **Sonarr télécharge** → \`/mnt/mouflosyno/Emby-Media/Manga/Serie/S01/episode.mp4\`
+2. **Cron watcher** → détecte fichier, lance \`--watch-sonarr\`
+3. **MouFlanimeXer** → traite, remplace en place (hardlinks)
+4. **Emby scan** → actualise biblio, affiche nouveau poster/métadonnées
+5. **Notifications** → Telegram si problème (police manquante, ambiguïté)
+
+## 🐛 Dépannage
+
+### Sous-titres énormes après traitement
+**Cause** : PlayResX/PlayResY absents ou mal configurés  
+**Solution** : MouFlanimeXer les ajoute auto maintenant (v2.4+)
+
+### Piste forcée seule trouvée
+**Cause** : Fansub a mal classé  
+**Solution** : Auto-reclassée en piste complète (v2.4+)
+
+### Polices manquantes
+**Action** : Fichier déplacé vers \`À TRAITER/\`, notif Telegram  
+**Solution** : Upload via interface web ou ignorer
+
+### Double redimensionnement (résolution fake)
+**Cause** : Déclaration 1920×1080 mais contenu 640×360  
+**Solution** : Heuristique \`get_true_orig_res()\` détecte et recalcule facteur
+
+## 📝 Historique des Versions
+
+- **v1.0-1.22** : Prototype web interactif, features audio/sous-titres, detection polices
+- **v2.0-2.5** : Corrections heuristiques, miroir, bug PlayResX/Y
+- **v3.0-3.1** : Support PGS (OCR), Sonarr watcher, auto-déploiement GitHub
+- **v3.29** : Watcher résilient (os.walk vs rglob), notifications Telegram
+
+## 🤝 Contribution
+
+Consultez [CONTRIBUTING.md](.github/CONTRIBUTING.md) pour les directives.
+
+## 📄 Licence
+
+MIT - voir [LICENSE](LICENSE)
+
+## 📞 Support
+
+Problèmes? Ouvrez une [issue sur GitHub](https://github.com/mouflo/mouflanimexer/issues).
+
+---
+
+Créé avec ❤️ pour les passionnés d'anime • [MouFloster](https://github.com/mouflo/MouFloster) • [MouFlopening](https://github.com/mouflo/MouFlopening)

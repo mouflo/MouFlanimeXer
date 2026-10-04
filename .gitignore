@@ -1,0 +1,13 @@
+__pycache__/
+*.bak
+fonts/
+excluded_series.json
+telegram_config.json
+sonarr_watch_state.json
+sonarr_watch.log
+*.log
+venv/
+
+login.json
+session_key
+*.tmp
