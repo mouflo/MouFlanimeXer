@@ -12,3 +12,7 @@ login.json
 session_key
 *.tmp
 data/
+sonarr_api_config.json
+extra_sub_lang.json
+sonarr_watch_failures.json
+sonarr_watch.lock

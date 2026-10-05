@@ -558,9 +558,29 @@ LANGS_JPN = {"jpn", "ja"}
 LANGS_FRE = {"fre", "fra", "fr"}
 LANGS_CHI = {"chi", "zho", "zh", "cmn"}  # chinois (mandarin, etc.)
 UNDETERMINED_LANGS = {None, "", "und", "undetermined", "mis", "zxx"}
-DEFAULT_FOLDER = "/mnt/mouflosyno/MouFlanimexer"
+# v3.32 : dossiers réglables depuis la page ⚙️ Réglages (data/paths.json, hors GitHub).
+# Sans réglage : les chemins habituels. Le surveillant Sonarr (cron) relit le même fichier.
+PATHS_FILE = Path(__file__).resolve().parent / "data" / "paths.json"
+DEFAULT_WORK_ROOT = "/mnt/mouflosyno/MouFlanimexer"
+DEFAULT_WATCH_DIRS = ["/mnt/mouflosyno/Emby-Media/Manga"]
+
+
+def load_paths_config():
+    try:
+        data = json.loads(PATHS_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+_PATHS = load_paths_config()
+WORK_ROOT = Path(_PATHS.get("work_root") or DEFAULT_WORK_ROOT)          # dossier de travail : sorties, journal, « À traiter »…
+DEFAULT_FOLDER = str(_PATHS.get("scan_default") or WORK_ROOT)            # dossier proposé au scan
+OK_DIR = WORK_ROOT / "FICHIER OK"                                        # fichiers terminés (mode scan sans miroir)
+ASS_DIR = WORK_ROOT / "ASS"                                              # sous-titres d'origine conservés
+AUTO_OUT_DIR = WORK_ROOT / ".en-cours-auto"                              # sorties du surveillant Sonarr, avant remplacement de l'original
 PORT = 5000
-BASE_VERSION = "3.31"  # Connexion sécurisée : mot de passe haché (hors GitHub), clé de session aléatoire, blocage après essais ratés, compatible Bitwarden
+BASE_VERSION = "3.32"  # Dossiers réglables (page Réglages), surveillant Sonarr verrouillé, fichier produit vérifié avant de remplacer l'original
 
 
 def _get_version():
@@ -574,8 +594,7 @@ def _get_version():
 
 APP_VERSION = _get_version()   # ex. 3.31.12 (a1b2c3d) : comme MouFloster et MouFlopening
 
-LOG_PATH = Path("/mnt/mouflosyno/MouFlanimexer/Log/.MouFlanimexer_log.jsonl")
-LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+LOG_PATH = WORK_ROOT / "Log" / ".MouFlanimexer_log.jsonl"     # dossier créé au premier écrit (pas au démarrage : NAS peut-être absent)
 
 EXCLUDED_SERIES_PATH = Path("/opt/mouflanimexer/excluded_series.json")
 
@@ -622,13 +641,13 @@ MOUFLANIMEXER_MARKER_NAME = "mouflanimexer_processed.marker"
 # Racine des copies "miroir" : reproduit toute l'arborescence d'un dossier
 # scanné (nfo, images, sous-dossiers de saison...) sans jamais toucher au
 # dossier d'origine ; seuls les .mkv/.mp4 sont remplacés par la version traitée.
-MIRROR_ROOT_BASE = Path("/mnt/mouflosyno/MouFlanimexer/Miroir")
+MIRROR_ROOT_BASE = WORK_ROOT / "Miroir"
 
 # Dossier où sont déplacés (sans être traités) les fichiers pour lesquels
 # une police OBLIGATOIRE (Arial Bold, Trebuchet MS Bold/BoldItalic) reste
 # introuvable même après la boucle d'upload — pour éviter de produire un
 # fichier "OK" avec une police manquante, silencieusement (v2.7).
-PENDING_REVIEW_DIR = Path("/mnt/mouflosyno/MouFlanimexer/A traiter (police manquante)")
+PENDING_REVIEW_DIR = WORK_ROOT / "A traiter (police manquante)"
 
 # V3.12 : automatisme Sonarr → traitement automatique → bibliothèque Emby.
 # Dossier(s) root folder Sonarr à surveiller pour les nouveaux épisodes
@@ -638,8 +657,8 @@ PENDING_REVIEW_DIR = Path("/mnt/mouflosyno/MouFlanimexer/A traiter (police manqu
 # du remux. Les cas nécessitant une décision humaine (sous-titre full/forcé
 # ambigu, police obligatoire introuvable) sont mis de côté ici plutôt que
 # de deviner, avec notification Telegram.
-SONARR_WATCH_DIRS = [Path("/mnt/mouflosyno/Emby-Media/Manga")]
-SONARR_REVIEW_DIR = Path("/mnt/mouflosyno/MouFlanimexer/A traiter (intervention manuelle)")
+SONARR_WATCH_DIRS = [Path(p) for p in (_PATHS.get("sonarr_watch_dirs") or DEFAULT_WATCH_DIRS)]
+SONARR_REVIEW_DIR = WORK_ROOT / "A traiter (intervention manuelle)"
 SONARR_STATE_PATH = Path("/opt/mouflanimexer/sonarr_watch_state.json")
 # Un fichier doit être stable (non modifié) depuis au moins ce délai avant
 # d'être traité, pour ne jamais toucher un import Sonarr encore en cours.
@@ -996,6 +1015,25 @@ def mkvmerge_json(path):
     return json.loads(r.stdout)
 
 
+def verify_remux(src_info, out_path):
+    """v3.32 : contrôle du fichier produit AVANT qu'il ne remplace quoi que ce soit.
+    Retourne '' si tout va bien, sinon la raison (fichier tronqué, piste vidéo/audio absente…)."""
+    try:
+        out = mkvmerge_json(Path(out_path))
+    except Exception as e:
+        return f"illisible ({e})"
+    kinds = [t.get("type") for t in out.get("tracks", [])]
+    if "video" not in kinds:
+        return "aucune piste vidéo"
+    if "audio" not in kinds:
+        return "aucune piste audio"
+    d_src = ((src_info or {}).get("container", {}).get("properties", {}) or {}).get("duration")
+    d_out = (out.get("container", {}).get("properties", {}) or {}).get("duration")
+    if d_src and d_out and int(d_out) < int(d_src) * 0.95 and int(d_src) - int(d_out) > 5_000_000_000:   # nettement plus court : tronqué
+        return f"durée différente de l'original ({int(d_out) / 1e9:.0f} s au lieu de {int(d_src) / 1e9:.0f} s)"
+    return ""
+
+
 def is_already_processed(path):
     """v3.24 : vrai si `path` porte déjà le marqueur mouflanimexer (petit
     fichier attaché, voir MOUFLANIMEXER_MARKER_NAME) — donc déjà traité,
@@ -1121,11 +1159,11 @@ def extract_series_name(path: Path) -> str:
         grandparent = path.parent.parent.name if len(parts) >= 3 else ""
         
         # Si parent a l'air d'un sous-dossier (S01, S1, Season 1, Specials, OVA, etc.)
-        if parent and parent.lower() != "mouflanimexer":
+        if parent and parent.lower() != WORK_ROOT.name.lower():
             # Reconnaître les dossiers de sous-type : saisons, spéciaux, OVA, bonus, films, etc.
             if re.search(r"^s\d+$|^season\s+\d+$|^specials?$|^ova$|^oav$|^bonus|^movie", parent.lower()):
                 # C'est un sous-dossier → use grandparent comme série
-                if grandparent and grandparent.lower() != "mouflanimexer":
+                if grandparent and grandparent.lower() != WORK_ROOT.name.lower():
                     series_raw = grandparent
                     subdir = parent
                 else:
@@ -1562,8 +1600,7 @@ def patch_ass_style(ass_path, orig_res=None, apply_style_profiles=True, skip_pro
 
 _BLUR_DETECT_RE = re.compile(r"\\(blur|be)([\d.]+)")
 
-PREVIEW_DIR = Path("/mnt/mouflosyno/MouFlanimexer/Previews")
-PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+PREVIEW_DIR = WORK_ROOT / "Previews"      # créé au premier aperçu
 
 def _ffmpeg_escape_path(p):
     p = str(p)
@@ -1645,13 +1682,19 @@ def find_font_file(font_name, search_dirs):
     police correctement nommée et fraîchement uploadée n'était jamais
     retrouvée par wait_for_font_upload()."""
     key = _normalize_font_key(Path(font_name).stem)
+    loose = None
     for d in search_dirs:
         if not d or not Path(d).exists():
             continue
-        for f in Path(d).iterdir():
-            if f.suffix.lower() in (".ttf", ".otf") and key in _normalize_font_key(f.stem):
-                return f
-    return None
+        for f in sorted(Path(d).iterdir()):
+            if f.suffix.lower() not in (".ttf", ".otf"):
+                continue
+            stem = _normalize_font_key(f.stem)
+            if stem == key:
+                return f                      # v3.32 : le nom exact d'abord (« Arial » ne prend plus « ArialBold » s'il existe)
+            if loose is None and key in stem:
+                loose = f
+    return loose
 
 
 def wait_for_font_upload(font_name, search_dirs=None):
@@ -1996,6 +2039,7 @@ def pick_margin_choice_gen(video_path, out_ass, group, sx, sy, margin_decisions)
     safe_time = hit["start"].replace(":", "-")
     base = f"{Path(out_ass).stem}_margin_{safe_time}"
 
+    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
     keep_jpg = PREVIEW_DIR / f"{base}_original.jpg"
     ok_keep = generate_preview(video_path, out_ass, hit["start"], keep_jpg)
 
@@ -2514,6 +2558,7 @@ def log_decision(path, status, summary=None, message=""):
             "message": message,
             "summary": summary,
         }
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception:
@@ -2621,7 +2666,8 @@ def auto_process_file(path: Path, tmpdir: Path, watch_root):
     # v3.23 : apply_extra_sub_lang=False — la piste sous-titre supplémentaire
     # (ex: coréen) n'est voulue que ponctuellement, jamais sur tout le flux
     # automatique Sonarr d'une série ; le traitement de base (FR) reste inchangé.
-    gen = process_file_gen(path, tmpdir, mirror_root=None, scan_root=None, apply_extra_sub_lang=False)
+    AUTO_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    gen = process_file_gen(path, tmpdir, mirror_root=None, scan_root=None, apply_extra_sub_lang=False, output_dir=AUTO_OUT_DIR)
     send_value = None
     notes = []
     while True:
@@ -2655,7 +2701,7 @@ def auto_process_file(path: Path, tmpdir: Path, watch_root):
         elif kind == "error":
             return "error", item[1], None
         elif kind == "done":
-            produced = Path("/mnt/mouflosyno/MouFlanimexer/FICHIER OK") / (path.stem + ".mkv")
+            produced = AUTO_OUT_DIR / (path.stem + ".mkv")
             if not produced.exists():
                 return "error", "Fichier traité introuvable après remux (chemin inattendu).", None
             try:
@@ -2826,13 +2872,58 @@ def seed_sonarr_state():
           f"Le watcher ne s'occupera désormais que des nouveaux épisodes.")
 
 
+SONARR_FAIL_PATH = SONARR_STATE_PATH.with_name("sonarr_watch_failures.json")
+WATCH_LOCK_PATH = SONARR_STATE_PATH.with_name("sonarr_watch.lock")
+
+
+def _load_failures():
+    try:
+        data = json.loads(SONARR_FAIL_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_failures(data):
+    try:
+        SONARR_FAIL_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def run_sonarr_watch_once():
     """Point d'entrée du watcher (appelé via cron : `python3 mouflanimexer.py
     --watch-sonarr`). Traite tous les fichiers stables et nouveaux trouvés
     dans SONARR_WATCH_DIRS, puis s'arrête (ne tourne pas en tâche de fond —
-    c'est cron qui fixe la fréquence)."""
+    c'est cron qui fixe la fréquence).
+    v3.32 : un seul passage à la fois (verrou) ; un fichier en échec n'est
+    retenté qu'après un délai croissant (30 min, 1 h, 2 h… 24 h max) et
+    n'envoie qu'UNE notification, au lieu d'être retraité toutes les 2 minutes."""
+    import fcntl
+    try:
+        WATCH_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = open(WATCH_LOCK_PATH, "w")
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return          # le passage précédent travaille encore : on le laisse finir
+    except OSError:
+        lock_file = None
+    missing = [d for d in SONARR_WATCH_DIRS if not d.exists()]
+    if missing and len(missing) == len(SONARR_WATCH_DIRS):
+        return          # partage réseau non monté : rien à faire (et surtout rien à créer en local)
     state = _load_sonarr_state()
-    files = _sonarr_find_stable_new_files(SONARR_WATCH_DIRS, state)
+    failures = _load_failures()
+    now = time.time()
+    files = []
+    for f in _sonarr_find_stable_new_files(SONARR_WATCH_DIRS, state):
+        fail = failures.get(str(f))
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            continue
+        if fail and fail.get("mtime") == mtime and now < fail.get("next", 0):
+            continue    # déjà en échec, pas encore l'heure de réessayer
+        files.append(f)
     if not files:
         return
 
@@ -2871,22 +2962,47 @@ def run_sonarr_watch_once():
                     # ne pas laisser d'entrée morte s'accumuler.
                     state.pop(str(f), None)
                 log_decision(f, "sonarr_watch_done", message=message)
+                failures.pop(str(f), None)
             elif status == "review":
                 log_decision(f, "sonarr_watch_review", message=message)
             else:
                 log_decision(f, "sonarr_watch_error", message=message)
 
+            notify = True
+            if status != "done" and f.exists():        # toujours là (échec, ou mise de côté impossible) : on espace les essais
+                prev = failures.get(str(f)) or {}
+                try:
+                    mtime = f.stat().st_mtime
+                except OSError:
+                    mtime = None
+                n = (prev.get("n", 0) + 1) if prev.get("mtime") == mtime else 1
+                failures[str(f)] = {"mtime": mtime, "n": n, "next": time.time() + min(30 * 60 * 2 ** (n - 1), 24 * 3600), "message": message}
+                notify = n == 1                         # une seule notification par fichier en échec
+            _save_failures(failures)
+
             # v3.25 : notification Telegram immédiate par fichier (succès,
             # mis de côté, ou erreur) — on utilise le nom final (post-
             # renommage Sonarr) quand il est connu, sinon le nom détecté.
-            notify_sonarr_result(final_path if (status == "done" and final_path is not None) else f, status, message)
+            if notify:
+                notify_sonarr_result(final_path if (status == "done" and final_path is not None) else f, status, message)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     _save_sonarr_state(state)
 
 
-def process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None, apply_extra_sub_lang=True):
+def process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None, apply_extra_sub_lang=True, output_dir=None):
+    """v3.32 : chaque fichier a son propre dossier temporaire (polices, sous-titres), effacé à la fin :
+    une police extraite d'un épisode ne peut plus faire croire qu'elle est présente dans le suivant."""
+    file_tmp = Path(tempfile.mkdtemp(prefix="fichier_", dir=str(tmpdir)))
+    try:
+        result = yield from _process_file_gen(path, file_tmp, mirror_root, scan_root, apply_extra_sub_lang, output_dir)
+        return result
+    finally:
+        shutil.rmtree(file_tmp, ignore_errors=True)
+
+
+def _process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None, apply_extra_sub_lang=True, output_dir=None):
     yield ("info", f"Début du traitement de : {path.name}")
     info = mkvmerge_json(path)
     
@@ -2971,13 +3087,14 @@ def process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None,
         # anime_name par-dessus, sinon la structure série/saison se retrouve
         # dupliquée (ex: .../Boruto/S1/Boruto/S1/...)
         output_dir = mirror_root / rel.parent
-    else:
-        output_dir = Path("/mnt/mouflosyno/MouFlanimexer/FICHIER OK")
+    elif output_dir is None:
+        output_dir = OK_DIR
+    output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / (path.stem + ".mkv")
 
     sub_paths = {}
-    ass_target_dir = series_path(Path("/mnt/mouflosyno/MouFlanimexer/ASS"), anime_name)
+    ass_target_dir = series_path(ASS_DIR, anime_name)
     ass_target_dir.mkdir(parents=True, exist_ok=True)
 
     # v3.20 : les pistes supplémentaires (extra_sub_tracks) passent par
@@ -3106,7 +3223,10 @@ def process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None,
         for att in attachments:
             fname = att.get("file_name", "")
             if any(fname.lower().endswith(ext) for ext in (".ttf", ".otf")):
-                font_out = fonts_dir / fname
+                safe_name = Path(fname.replace("\\", "/")).name      # v3.32 : jamais de chemin dans un nom de pièce jointe (« ../x.ttf »)
+                if not safe_name or safe_name in (".", ".."):
+                    continue
+                font_out = fonts_dir / safe_name
                 r_font = run(["mkvextract", "attachments", str(path), f"{att['id']}:{font_out}"])
                 if r_font.returncode == 0 and font_out.exists():
                     font_paths.append(font_out)
@@ -3175,7 +3295,8 @@ def process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None,
                     yield from _skip_missing_required_font(path, scan_root, req_font)
                     return
 
-    args = ["mkvmerge", "-o", str(out_file)]
+    part_file = out_file.with_name(f"{out_file.stem}.partiel-{os.getpid()}.mkv")    # v3.32 : écrit à côté, vérifié, puis renommé
+    args = ["mkvmerge", "-o", str(part_file)]
     
     # V3.6 : la piste "langue d'origine" (celle placée en premier et
     # marquée par défaut) était toujours le japonais s'il existait, sinon
@@ -3284,9 +3405,20 @@ def process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None,
     args += ["--track-order", ",".join(track_order_items)]
 
     yield ("info", "Lancement du remux mkvmerge vers FICHIER OK...")
-    r = run(args)
-    if r.returncode != 0:
-        raise RuntimeError(f"Le remux final a échoué : {r.stderr}")
+    try:
+        r = run(args)
+        if r.returncode != 0:
+            raise RuntimeError(f"Le remux final a échoué : {r.stderr}")
+        problem = verify_remux(info, part_file)
+        if problem:
+            raise RuntimeError(f"Fichier produit incorrect, l'original n'est pas touché : {problem}")
+        os.replace(part_file, out_file)
+    finally:
+        if part_file.exists():
+            try:
+                part_file.unlink()
+            except OSError:
+                pass
 
     summary = {"subtitles": rec_sub}
     if rec_jpn:
@@ -3720,7 +3852,7 @@ def _already_handled(f: Path, anime_name=None, mirror_root=None, scan_root=None)
         except ValueError:
             rel = Path(f.name)
         return (mirror_root / rel.parent / (f.stem + ".mkv")).exists()
-    return (Path("/mnt/mouflosyno/MouFlanimexer/FICHIER OK") / (f.stem + ".mkv")).exists()
+    return (OK_DIR / (f.stem + ".mkv")).exists()
 
 @app.route("/", methods=["GET"])
 @requires_auth
@@ -3893,10 +4025,12 @@ diag.init_app(app, APP_VERSION, build_diagnostic_report)
 import settings_page
 settings_page.init_app(
     app, lambda: APP_VERSION, TELEGRAM_CONFIG_PATH, SONARR_API_CONFIG_PATH,
-    lambda: [("Dossier par défaut", DEFAULT_FOLDER), ("Fichiers terminés", Path(DEFAULT_FOLDER) / "FICHIER OK"),
+    lambda: [("Fichiers terminés", OK_DIR), ("Copies miroir", MIRROR_ROOT_BASE), ("Sous-titres d'origine", ASS_DIR),
              ("Journal des décisions", LOG_PATH.parent), ("À traiter (police manquante)", PENDING_REVIEW_DIR),
-             ("À traiter (intervention manuelle)", SONARR_REVIEW_DIR), ("Bibliothèque de polices", REFERENCE_FONTS_DIR)]
-    + [("Surveillance Sonarr", d) for d in SONARR_WATCH_DIRS])
+             ("À traiter (intervention manuelle)", SONARR_REVIEW_DIR), ("Aperçus", PREVIEW_DIR),
+             ("Bibliothèque de polices", REFERENCE_FONTS_DIR)],
+    paths_file=PATHS_FILE, paths_defaults={"work_root": DEFAULT_WORK_ROOT, "sonarr_watch_dirs": DEFAULT_WATCH_DIRS},
+    busy_fn=lambda: bool(STATE["is_running"] or STATE["paused"] or STATE["pending"]))
 
 
 @app.route("/download_log")
@@ -3915,9 +4049,25 @@ def clear_log():
     STATE["log"] = _LoggedList([])
     return redirect(url_for("index"))
 
+_CONTROL_LOCK = threading.Lock()
+
+
+def _serialized(f):
+    """v3.32 : les boutons (scanner, lancer, reprendre, répondre…) passent un par un : un double clic ne lance plus deux traitements."""
+    @wraps(f)
+    def wrapper(*a, **k):
+        with _CONTROL_LOCK:
+            return f(*a, **k)
+    return wrapper
+
+
 @app.route("/scan", methods=["POST"])
 @requires_auth
+@_serialized
 def scan():
+    if STATE["is_running"]:
+        STATE["log"].append({"text": "⚠ Un traitement est en cours : mets-le en pause ou arrête-le avant de scanner un autre dossier.", "alert": True})
+        return redirect(url_for("index"))
     folder = request.form.get("folder", "").strip()
     recursive = request.form.get("recursive") == "on"
     mirror_mode = request.form.get("mirror_mode") == "on"
@@ -4005,6 +4155,9 @@ def scan():
     STATE["gen"] = None
     STATE["pending"] = None
     STATE["is_running"] = False
+    STATE["paused"] = False                 # v3.32 : un nouveau scan efface une pause précédente (sinon plus aucun bouton)
+    STATE["pause_requested"] = False
+    STATE["stop_requested"] = False
     if STATE["tmpdir"] is not None:
         shutil.rmtree(STATE["tmpdir"], ignore_errors=True)
     STATE["tmpdir"] = Path(tempfile.mkdtemp(prefix="mkv_remux_"))
@@ -4012,6 +4165,7 @@ def scan():
 
 @app.route("/upload_font", methods=["POST"])
 @requires_auth
+@_serialized
 def upload_font():
     if STATE["is_running"] or not STATE["pending"] or STATE["pending"][0] != "missing_font":
         return redirect(url_for("index"))
@@ -4023,7 +4177,10 @@ def upload_font():
         REFERENCE_FONTS_DIR.mkdir(parents=True, exist_ok=True)
         for file in files:
             if file and file.filename:
-                safe_name = re.sub(r"[^A-Za-z0-9_.\-]", "_", file.filename)
+                safe_name = re.sub(r"[^A-Za-z0-9_.\-]", "_", Path(file.filename).name)
+                if not safe_name.lower().endswith((".ttf", ".otf")) or safe_name.startswith("."):
+                    STATE["log"].append({"text": f"⚠ « {file.filename} » ignoré : seules les polices .ttf et .otf sont acceptées.", "alert": True})
+                    continue
                 file.save(REFERENCE_FONTS_DIR / safe_name)
                 STATE["log"].append({"text": f"✓ Police '{safe_name}' ajoutée à la bibliothèque.", "alert": False})
                 saved_any = True
@@ -4042,6 +4199,7 @@ def upload_font():
 
 @app.route("/stop", methods=["POST"])
 @requires_auth
+@_serialized
 def stop():
     if STATE["is_running"]:
         STATE["stop_requested"] = True  # le worker s'arrêtera à la prochaine étape
@@ -4056,6 +4214,7 @@ def stop():
 
 @app.route("/pause", methods=["POST"])
 @requires_auth
+@_serialized
 def pause():
     if STATE["is_running"]:
         STATE["pause_requested"] = True  # le worker se met en pause à la prochaine étape
@@ -4063,6 +4222,7 @@ def pause():
 
 @app.route("/resume", methods=["POST"])
 @requires_auth
+@_serialized
 def resume():
     if STATE["paused"] and not STATE["is_running"]:
         STATE["paused"] = False
@@ -4072,6 +4232,7 @@ def resume():
 
 @app.route("/start", methods=["POST"])
 @requires_auth
+@_serialized
 def start():
     if STATE["is_running"]:
         return redirect(url_for("index"))
@@ -4115,11 +4276,15 @@ def start():
 
 @app.route("/decide", methods=["POST"])
 @requires_auth
+@_serialized
 def decide():
     if STATE["is_running"]:
         return redirect(url_for("index"))
     raw = request.form.get("choice")
-    value = None if raw == "none" else int(raw)
+    try:
+        value = None if raw == "none" else int(raw)
+    except (TypeError, ValueError):
+        return redirect(url_for("index"))          # réponse incomplète : la question reste affichée
 
     if STATE["pending"]:
         kind = STATE["pending"][0]

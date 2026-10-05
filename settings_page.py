@@ -50,8 +50,14 @@ def _http(url, headers=None, payload=None, timeout=10):
         return 0, str(getattr(e, "reason", e))
 
 
-def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn):
-    """folders_fn() -> [(libellé, chemin)] : les dossiers utilisés, affichés en lecture seule."""
+def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file=None, paths_defaults=None, busy_fn=None):
+    """folders_fn() -> [(libellé, chemin)] : les dossiers utilisés (affichés) ;
+    paths_file : data/paths.json, réglable ici ; busy_fn() -> True si un traitement est en cours (pas de redémarrage)."""
+    import threading
+    import time
+    import fs_browser
+    fs_browser.init_app(app)
+    defaults = paths_defaults or {}
 
     @app.route("/reglages")
     def settings_page():
@@ -120,3 +126,33 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn):
     @app.route("/api/settings/folders")
     def folders_state():
         return jsonify({"folders": [{"label": label, "path": str(path), "ok": Path(path).exists()} for label, path in folders_fn()]})
+
+    @app.route("/api/settings/paths")
+    def paths_state():
+        cur = _read(paths_file) if paths_file else {}
+        return jsonify({"work_root": cur.get("work_root") or defaults.get("work_root", ""),
+                        "scan_default": cur.get("scan_default") or "",
+                        "watch_dirs": cur.get("sonarr_watch_dirs") or defaults.get("sonarr_watch_dirs", []),
+                        "busy": bool(busy_fn and busy_fn())})
+
+    @app.route("/api/settings/paths", methods=["POST"])
+    def paths_save():
+        if not paths_file:
+            return jsonify({"ok": False, "error": "Réglage indisponible"}), 400
+        if busy_fn and busy_fn():
+            return jsonify({"ok": False, "error": "Un traitement est en cours : termine-le ou arrête-le avant de changer les dossiers (l'appli doit redémarrer)."}), 409
+        body = request.get_json(silent=True) or {}
+        work = str(body.get("work_root", "")).strip().rstrip("/")
+        scan = str(body.get("scan_default", "")).strip().rstrip("/")
+        watch = [str(w).strip().rstrip("/") for w in (body.get("watch_dirs") or []) if str(w).strip()]
+        for label, value in [("dossier de travail", work)] + [("dossier à scanner", scan)] * bool(scan) + [("dossier surveillé", w) for w in watch]:
+            if not value.startswith("/") or "\n" in value:
+                return jsonify({"ok": False, "error": f"Chemin invalide pour le {label} : « {value} » (chemin complet commençant par /)."}), 400
+            if not Path(value).is_dir():
+                return jsonify({"ok": False, "error": f"Dossier introuvable sur le serveur ({label}) : « {value} ». Rien n'a été enregistré."}), 400
+        if not os.access(work, os.W_OK):
+            return jsonify({"ok": False, "error": f"Impossible d'écrire dans « {work} » (droits ? partage en lecture seule ?). Rien n'a été enregistré."}), 400
+        _write(paths_file, {"work_root": work, "scan_default": scan, "sonarr_watch_dirs": watch})
+        logger.info("Dossiers mis à jour depuis la page web : travail %s · scan %s · surveillés %s", work, scan or "(travail)", ", ".join(watch) or "(aucun)")
+        threading.Thread(target=lambda: (time.sleep(1.5), os._exit(0)), daemon=True).start()   # systemd relance l'appli
+        return jsonify({"ok": True, "message": "Enregistré. L'appli redémarre pour relire les dossiers… (le surveillant Sonarr les prend au prochain passage)"})

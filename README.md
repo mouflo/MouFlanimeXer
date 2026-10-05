@@ -148,24 +148,19 @@ Ajouter à crontab root (toutes les minutes):
 
 ## ⚙️ Configuration
 
-### Variables d'Environnement
+### Dossiers
 
-```bash
-# Dossier racine des séries (NAS, local, etc.)
-ANIME_ROOT=/mnt/mouflosyno/Emby-Media/Manga
+Tout se règle dans la page **⚙️ Réglages** → Dossiers (avec un explorateur pour choisir les dossiers) :
 
-# Dossier de sortie
-OUTPUT_DIR=/mnt/mouflosyno/Emby-Media/Manga  # Remplace en place (hardlinks Sonarr)
+- **Dossier de travail** (par défaut `/mnt/mouflosyno/MouFlanimexer`) : il reçoit `FICHIER OK/`, `Miroir/`, `ASS/`, `Log/`, `Previews/` et les dossiers « À traiter » ;
+- **Dossier proposé au scan** (facultatif) ;
+- **Dossiers surveillés** par le traitement automatique Sonarr (par défaut `/mnt/mouflosyno/Emby-Media/Manga`).
 
-# Dossier miroir optionnel (pour préserver la structure)
-MIRROR_DIR=/path/to/mirror
+Les réglages sont enregistrés dans `data/paths.json` sur le serveur (jamais sur GitHub). Sans ce fichier, les chemins par défaut ci-dessus sont utilisés.
 
-# Style personnalisé pour les polices
-PLAYRES_X=1920
-PLAYRES_Y=1080
-DEFAULT_FONT="Trebuchet MS"
-DEFAULT_FONT_SIZE=66
-```
+### Sonarr (optionnel)
+
+Page **⚙️ Réglages** → Sonarr : adresse et clé API (bouton « Tester »). Enregistré dans `sonarr_api_config.json` (hors dépôt git).
 
 ### Telegram (optionnel)
 
