@@ -7,6 +7,34 @@
 
 Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples (français/japonais), unifie les styles typographiques, détecte les résolutions réelles cachées, et supporte l'OCR pour les sous-titres bitmap (PGS).
 
+## 📸 Aperçu
+
+*Captures avec des données de démonstration.*
+
+**Après le scan : les séries trouvées, à cocher ou décocher**
+
+![Après le scan : les séries trouvées, à cocher ou décocher](docs/screenshots/accueil.png)
+
+**Un traitement en cours, avec progression, pause et journal**
+
+![Un traitement en cours, avec progression, pause et journal](docs/screenshots/traitement.png)
+
+**L'appli s'arrête et demande quand un choix est nécessaire (ici, quelle piste audio garder)**
+
+![L'appli s'arrête et demande quand un choix est nécessaire (ici, quelle piste audio garder)](docs/screenshots/question.png)
+
+**Traitement terminé, journal complet**
+
+![Traitement terminé, journal complet](docs/screenshots/termine.png)
+
+**La fenêtre « Journal et diagnostic »**
+
+![La fenêtre « Journal et diagnostic »](docs/screenshots/journal.png)
+
+**Sur téléphone**
+
+![Sur téléphone](docs/screenshots/mobile.png)
+
 ## ✨ Fonctionnalités
 
 ### Gestion Audio/Sous-titres
