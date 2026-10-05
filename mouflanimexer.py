@@ -3492,8 +3492,8 @@ TEMPLATE = """
     form button { width: 100%; }
   }
 </style>
-<link rel="stylesheet" href="/ui/mou-ui.css">
-<script src="/ui/mou-ui.js" defer></script>
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 </head>
 <body>
 <div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}"
