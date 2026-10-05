@@ -109,6 +109,7 @@ LOGIN_HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Connexion — MouFlanimeXer</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <style>
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: #121212; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; }
@@ -197,9 +198,22 @@ def init_app(app):
     )
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
+    @app.route("/icons/<path:name>")
+    def app_icons(name):
+        from flask import send_from_directory
+        resp = send_from_directory(BASE_DIR / "icons", name, max_age=86400)
+        if name.endswith(".webmanifest"):
+            resp.mimetype = "application/manifest+json"
+        return resp
+
+    @app.route("/favicon.ico")
+    def app_favicon():
+        from flask import send_from_directory
+        return send_from_directory(BASE_DIR / "icons", "favicon-32.png", max_age=86400)
+
     @app.before_request
     def require_login():
-        if request.path == "/login" or is_logged_in():
+        if request.path in ("/login", "/favicon.ico") or request.path.startswith("/icons/") or is_logged_in():
             return None
         target = request.full_path.rstrip("?") if request.method == "GET" else "/"
         return redirect("/login?next=" + quote(target, safe=""))

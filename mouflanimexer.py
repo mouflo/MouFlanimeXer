@@ -3421,6 +3421,7 @@ TEMPLATE = """
 <meta http-equiv="refresh" content="2">
 {% endif %}
 <title>Remux MKV</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <style>
   * { box-sizing: border-box; }
   :root {
@@ -3879,6 +3880,7 @@ DIAG_TEMPLATE = """
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Diagnostic — MouFlanimeXer</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <style>
   * { box-sizing: border-box; }
   :root { --bg: #fff; --fg: #111; --muted: #888; --box-bg: #f4f4f4; --box-border: #ddd; }
