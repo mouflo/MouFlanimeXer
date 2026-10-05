@@ -63,6 +63,10 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 
 ### Intégrations & Automatisation
 - 📡 **Sonarr → Traitement → Emby** : watcher cron détecte nouveaux fichiers, traite en place, intègre à la biblio
+- 🎞️ **MP4 aussi** : le traitement automatique prend aussi les .mp4 importés par Sonarr (ils deviennent des .mkv ; l'original n'est retiré qu'une fois le .mkv vérifié et en place) — réglable
+- 🔀 **Sonarr dans Docker** : correspondance de chemins réglable (ex. `/tv` ↔ `/mnt/mouflosyno/Emby-Media/Manga`)
+- 🛡️ **Sécurités** : fichier produit vérifié avant de remplacer l'original, un seul passage du surveillant à la fois, essais espacés en cas d'échec, alerte Telegram si le partage réseau n'est pas monté
+- 🗂️ **FICHIER OK rangé par série** : deux épisodes de séries différentes au même nom ne s'écrasent plus
 - 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus (à régler depuis la page ⚙️ Réglages)
 - ⚙️ **Page Réglages** : Telegram, Sonarr et liste des dossiers, même page que dans MouFloster et MouFlopening
 - 🔄 **Auto-déploiement GitHub** : git pull auto toutes les minutes, redémarrage du service si changements

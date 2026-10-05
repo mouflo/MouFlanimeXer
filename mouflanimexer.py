@@ -659,6 +659,7 @@ PENDING_REVIEW_DIR = WORK_ROOT / "A traiter (police manquante)"
 # de deviner, avec notification Telegram.
 SONARR_WATCH_DIRS = [Path(p) for p in (_PATHS["sonarr_watch_dirs"] if "sonarr_watch_dirs" in _PATHS else DEFAULT_WATCH_DIRS)]   # liste vide = surveillance désactivée
 SONARR_REVIEW_DIR = WORK_ROOT / "A traiter (intervention manuelle)"
+WATCH_MP4 = bool(_PATHS.get("watch_mp4", True))      # v3.33 : le surveillant traite aussi les .mp4 (devenus .mkv)
 SONARR_STATE_PATH = Path("/opt/mouflanimexer/sonarr_watch_state.json")
 # Un fichier doit être stable (non modifié) depuis au moins ce délai avant
 # d'être traité, pour ne jamais toucher un import Sonarr encore en cours.
@@ -705,6 +706,26 @@ def load_sonarr_api_config():
     except Exception:
         pass
     return None, None
+
+
+def load_sonarr_path_map():
+    """v3.33 : correspondances de chemins quand Sonarr voit les fichiers autrement (ex. Docker : « /tv » ici
+    « /mnt/mouflosyno/Emby-Media/Manga »). -> [(chemin Sonarr, chemin local)], les plus longs d'abord."""
+    try:
+        data = json.loads(SONARR_API_CONFIG_PATH.read_text(encoding="utf-8"))
+        pairs = [(str(m.get("sonarr", "")).rstrip("/"), str(m.get("local", "")).rstrip("/")) for m in data.get("path_map") or []]
+        return sorted([p for p in pairs if p[0] and p[1]], key=lambda p: -len(p[0]))
+    except Exception:
+        return []
+
+
+def sonarr_to_local(path_str):
+    """Chemin donné par Sonarr -> chemin sur ce serveur (inchangé sans correspondance)."""
+    p = str(path_str or "")
+    for son, loc in load_sonarr_path_map():
+        if p == son or p.startswith(son + "/"):
+            return loc + p[len(son):]
+    return p
 
 
 def _sonarr_api_call(method, path, api_key, base_url, payload=None, timeout=20, _redirects_left=3):
@@ -762,7 +783,7 @@ def _sonarr_find_series_id(file_path: Path, base_url, api_key):
     best_match = None
     best_len = -1
     for series in series_list:
-        series_path = series.get("path")
+        series_path = sonarr_to_local(series.get("path"))
         if not series_path:
             continue
         # Le fichier doit être DANS ce dossier série (avec séparateur, pour
@@ -800,7 +821,7 @@ def _sonarr_find_episode_file_id(series_id, file_path: Path, base_url, api_key):
         return None
     target = os.path.normpath(str(file_path))
     for item in files:
-        item_path = item.get("path")
+        item_path = sonarr_to_local(item.get("path"))
         if item_path and os.path.normpath(item_path) == target:
             return item.get("id")
     return None
@@ -812,7 +833,7 @@ def _sonarr_get_episode_file_path(episode_file_id, base_url, api_key):
     None si introuvable/erreur."""
     try:
         item = _sonarr_api_call("GET", f"/api/v3/episodefile/{episode_file_id}", api_key, base_url)
-        p = item.get("path") if item else None
+        p = sonarr_to_local(item.get("path")) if item else None
         return Path(p) if p else None
     except Exception:
         return None
@@ -1191,6 +1212,12 @@ def extract_series_name(path: Path) -> str:
     if subdir:
         return f"{series_name} / {subdir.upper()}"
     return series_name
+
+
+def ok_dir_for(anime_name):
+    """v3.33 : dossier « FICHIER OK/<série>[/<saison>] », noms nettoyés pour le partage réseau (SMB)."""
+    clean = re.sub(r'[:*?"<>|]+', "-", anime_name or "").replace("::", "-")
+    return series_path(OK_DIR, clean)
 
 
 def series_path(base: Path, anime_name: str) -> Path:
@@ -2786,17 +2813,33 @@ def auto_process_file(path: Path, tmpdir: Path, watch_root):
             produced = AUTO_OUT_DIR / (path.stem + ".mkv")
             if not produced.exists():
                 return "error", "Fichier traité introuvable après remux (chemin inattendu).", None
+            # v3.33 : un .mp4 devient un .mkv à côté ; l'original n'est retiré qu'une fois le .mkv en place
+            target = path.with_suffix(".mkv")
+            if target != path and target.exists():
+                try:
+                    produced.unlink()
+                except OSError:
+                    pass
+                return "error", f"Un fichier « {target.name} » existe déjà à côté : rien n'a été remplacé.", None
             try:
-                os.replace(str(produced), str(path))
+                os.replace(str(produced), str(target))
             except Exception as e:
                 return "error", f"Échec du remplacement en place du fichier original : {e}", None
+            if target != path:
+                try:
+                    if target.stat().st_size > 0:
+                        path.unlink()
+                except OSError as e:
+                    notes.append(f"l'ancien {path.name} n'a pas pu être retiré ({e})")
+            converted = target != path
+            path = target
             # v3.15 : le nom de fichier imposé par Sonarr peut contenir l'ordre
             # des langues audio (ex: [FR+JA]) — désormais périmé après le
             # remux. On demande à Sonarr de rescanner puis renommer lui-même
             # (best-effort, ne fait jamais échouer le "done" ci-dessous).
             # v3.17 : on récupère le chemin final réel pour que l'état du
             # watcher ne pointe jamais vers un chemin qui n'existe plus.
-            final_path = trigger_sonarr_rescan_and_rename(path)
+            final_path = trigger_sonarr_rescan_and_rename(path) or (path if converted else None)
             return "done", "; ".join(notes) if notes else "traité sans intervention", final_path
         # "info" / "warn" : déjà journalisés par log_decision côté pipeline
         # standard, ignorés ici puisqu'il n'y a pas d'interface à mettre à jour.
@@ -2813,9 +2856,10 @@ def _iter_mkv_files(root):
     → crash complet du process watcher, plus aucune notification Telegram
     envoyée, jusqu'au prochain déclenchement cron). os.walk(onerror=...)
     avale l'erreur et continue avec les dossiers suivants."""
+    exts = (".mkv", ".mp4") if WATCH_MP4 else (".mkv",)      # v3.33 : les .mp4 importés par Sonarr aussi (réglable)
     for dirpath, dirnames, filenames in os.walk(root, onerror=lambda e: None):
         for name in filenames:
-            if name.lower().endswith(".mkv"):
+            if name.lower().endswith(exts):
                 yield Path(dirpath) / name
 
 
@@ -2990,9 +3034,27 @@ def run_sonarr_watch_once():
         return          # le passage précédent travaille encore : on le laisse finir
     except OSError:
         lock_file = None
+    if not SONARR_WATCH_DIRS:
+        return          # surveillance désactivée dans les Réglages
     missing = [d for d in SONARR_WATCH_DIRS if not d.exists()]
-    if not SONARR_WATCH_DIRS or len(missing) == len(SONARR_WATCH_DIRS):
-        return          # partage réseau non monté : rien à faire (et surtout rien à créer en local)
+    problem = None
+    if len(missing) == len(SONARR_WATCH_DIRS):
+        problem = "dossier surveillé introuvable : " + ", ".join(str(d) for d in missing)
+    elif not (WORK_ROOT.is_dir() and os.access(WORK_ROOT, os.W_OK)):
+        problem = f"dossier de travail inaccessible : {WORK_ROOT}"
+    if problem:         # v3.33 : partage réseau non monté → rien à faire, une alerte Telegram par heure au plus
+        alert_file = SONARR_STATE_PATH.with_name("sonarr_watch_nas_alert")
+        try:
+            last = alert_file.stat().st_mtime
+        except OSError:
+            last = 0
+        if time.time() - last > 3600:
+            send_telegram_notification(f"⚠️ MouFlanimeXer : partage réseau inaccessible ({problem}). Le traitement automatique attend son retour.")
+            try:
+                alert_file.write_text(problem, encoding="utf-8")
+            except OSError:
+                pass
+        return
     state = _load_sonarr_state()
     failures = _load_failures()
     now = time.time()
@@ -3171,7 +3233,7 @@ def _process_file_gen(path: Path, tmpdir: Path, mirror_root=None, scan_root=None
         # dupliquée (ex: .../Boruto/S1/Boruto/S1/...)
         output_dir = mirror_root / rel.parent
     elif output_dir is None:
-        output_dir = OK_DIR
+        output_dir = ok_dir_for(anime_name)        # v3.33 : un sous-dossier par série (plus d'écrasement entre séries)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / (path.stem + ".mkv")
@@ -3935,7 +3997,8 @@ def _already_handled(f: Path, anime_name=None, mirror_root=None, scan_root=None)
         except ValueError:
             rel = Path(f.name)
         return (mirror_root / rel.parent / (f.stem + ".mkv")).exists()
-    return (OK_DIR / (f.stem + ".mkv")).exists()
+    name = f.stem + ".mkv"
+    return (ok_dir_for(anime_name or extract_series_name(f)) / name).exists() or (OK_DIR / name).exists()   # ancien rangement (à plat) reconnu aussi
 
 @app.route("/", methods=["GET"])
 @requires_auth
@@ -4344,6 +4407,9 @@ def start():
     save_extra_sub_lang(extra_sub_lang)
 
     STATE["queue"] = [f for f in STATE["files"] if extract_series_name(f) not in excluded]
+    if not (WORK_ROOT.is_dir() and os.access(WORK_ROOT, os.W_OK)):      # v3.33 : NAS non monté ou en lecture seule
+        STATE["log"].append({"text": f"⚠ Dossier de travail inaccessible ({WORK_ROOT}) : le partage réseau est-il monté ? Rien n'a été lancé.", "alert": True})
+        return redirect(url_for("index"))
 
     STATE["idx"] = 0
     STATE["log"] = _LoggedList([])

@@ -98,12 +98,23 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
     def sonarr_state():
         c = _read(sonarr_path)
         key = c.get("api_key", "")
-        return jsonify({"configured": bool(c.get("base_url") and key), "base_url": c.get("base_url", ""), "hint": "…" + key[-4:] if key else ""})
+        return jsonify({"configured": bool(c.get("base_url") and key), "base_url": c.get("base_url", ""), "hint": "…" + key[-4:] if key else "",
+                        "path_map": c.get("path_map") or []})
 
     @app.route("/api/settings/sonarr", methods=["POST"])
     def sonarr_save():
         body = request.get_json(silent=True) or {}
         cur = _read(sonarr_path)
+        path_map = cur.get("path_map") or []
+        if "path_map" in body:                      # correspondances de chemins Sonarr <-> ce serveur
+            path_map = []
+            for m in body.get("path_map") or []:
+                son, loc = str((m or {}).get("sonarr", "")).strip().rstrip("/"), str((m or {}).get("local", "")).strip().rstrip("/")
+                if not son and not loc:
+                    continue
+                if not son.startswith("/") or not loc.startswith("/"):
+                    return jsonify({"ok": False, "error": f"Correspondance invalide : « {son} » ↔ « {loc} » (deux chemins complets commençant par /)."}), 400
+                path_map.append({"sonarr": son, "local": loc})
         url = str(body.get("base_url", "")).strip().rstrip("/") or cur.get("base_url", "")
         key = str(body.get("api_key", "")).strip() or cur.get("api_key", "")
         if not _URL_RE.match(url):
@@ -119,7 +130,7 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
             return jsonify({"ok": False, "error": f"Sonarr a répondu une erreur ({code})"}), 400
         if body.get("test"):
             return jsonify({"ok": True, "message": "Sonarr répond et accepte la clé."})
-        _write(sonarr_path, {"base_url": url, "api_key": key})
+        _write(sonarr_path, {"base_url": url, "api_key": key, "path_map": path_map})
         logger.info("Réglages Sonarr enregistrés depuis la page web")
         return jsonify({"ok": True, "message": "Enregistré : Sonarr répond et accepte la clé."})
 
@@ -133,6 +144,7 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
         return jsonify({"work_root": cur.get("work_root") or defaults.get("work_root", ""),
                         "scan_default": cur.get("scan_default") or "",
                         "watch_dirs": cur["sonarr_watch_dirs"] if "sonarr_watch_dirs" in cur else defaults.get("sonarr_watch_dirs", []),
+                        "watch_mp4": bool(cur.get("watch_mp4", True)),
                         "busy": bool(busy_fn and busy_fn())})
 
     @app.route("/api/settings/paths", methods=["POST"])
@@ -152,7 +164,7 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
                 return jsonify({"ok": False, "error": f"Dossier introuvable sur le serveur ({label}) : « {value} ». Rien n'a été enregistré."}), 400
         if not os.access(work, os.W_OK):
             return jsonify({"ok": False, "error": f"Impossible d'écrire dans « {work} » (droits ? partage en lecture seule ?). Rien n'a été enregistré."}), 400
-        _write(paths_file, {"work_root": work, "scan_default": scan, "sonarr_watch_dirs": watch})
+        _write(paths_file, {"work_root": work, "scan_default": scan, "sonarr_watch_dirs": watch, "watch_mp4": bool(body.get("watch_mp4", True))})
         logger.info("Dossiers mis à jour depuis la page web : travail %s · scan %s · surveillés %s", work, scan or "(travail)", ", ".join(watch) or "(aucun)")
         threading.Thread(target=lambda: (time.sleep(1.5), os._exit(0)), daemon=True).start()   # systemd relance l'appli
         return jsonify({"ok": True, "message": "Enregistré. L'appli redémarre pour relire les dossiers… (le surveillant Sonarr les prend au prochain passage)"})
