@@ -580,7 +580,7 @@ OK_DIR = WORK_ROOT / "FICHIER OK"                                        # fichi
 ASS_DIR = WORK_ROOT / "ASS"                                              # sous-titres d'origine conservés
 AUTO_OUT_DIR = WORK_ROOT / ".en-cours-auto"                              # sorties du surveillant Sonarr, avant remplacement de l'original
 PORT = 5000
-BASE_VERSION = "3.32"  # Dossiers réglables (page Réglages), surveillant Sonarr verrouillé, fichier produit vérifié avant de remplacer l'original
+BASE_VERSION = "3.33"  # Sous-titres : \\iclip, découpes et dessins vectoriels, bordures/ombres X/Y, espacement et vieux format SSA mis à l'échelle
 
 
 def _get_version():
@@ -1304,7 +1304,47 @@ _ORG_RE = re.compile(r"\\org\(\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*\)")
 _MOVE_RE = re.compile(
     r"\\move\(\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*,\s*([\-\d.]+)"
     r"(\s*,\s*[\-\d.]+\s*,\s*[\-\d.]+)?\)")
-_CLIP_RE = re.compile(r"\\clip\(\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*\)")
+_CLIP_RE = re.compile(r"\\(i?clip)\(\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*,\s*([\-\d.]+)\s*\)")   # v3.33 : \iclip aussi
+# v3.33 : effets rares jusque-là oubliés par la mise à l'échelle
+_VCLIP_RE = re.compile(r"\\(i?clip)\(\s*(?:(\d+)\s*,\s*)?([mnlbspcMNLBSPC][^)]*)\)")   # découpe en forme de dessin
+_XYBORD_RE = re.compile(r"\\(xbord|ybord|xshad|yshad)(-?[\d.]+)")
+_FSP_RE = re.compile(r"\\fsp(-?[\d.]+)")
+_PBO_RE = re.compile(r"\\pbo(-?[\d.]+)")
+_DRAW_TAG_RE = re.compile(r"\\p(\d+)|\\r")
+_DRAW_TOKEN_RE = re.compile(r"[a-zA-Z]|-?\d+(?:\.\d+)?")
+
+
+def _fmt_num(v):
+    """2 décimales maximum, sans zéros inutiles (« 12.50 » -> « 12.5 », « 12.00 » -> « 12 »)."""
+    t = f"{v:.2f}".rstrip("0").rstrip(".")
+    return "0" if t in ("-0", "") else t
+
+
+def scale_drawing(drawing, sx, sy):
+    """v3.33 : met à l'échelle les coordonnées d'un dessin ASS (« m 0 0 l 100 0 100 50 »…) :
+    les nombres vont par paires x y, quelle que soit la commande (m, n, l, b, s, p, c)."""
+    out, i = [], 0
+    for tok in _DRAW_TOKEN_RE.findall(drawing):
+        if tok.isalpha():
+            out.append(tok)
+            i = 0                     # chaque commande repart sur un x
+        else:
+            out.append(_fmt_num(float(tok) * (sx if i % 2 == 0 else sy)))
+            i += 1
+    return " ".join(out)
+
+
+def scale_drawing_text(txt, sx, sy):
+    """v3.33 : dans une ligne, le texte qui suit \\p1 (ou \\p2…) jusqu'à \\p0 est un dessin, pas du texte : on le met à l'échelle."""
+    parts = re.split(r"(\{[^}]*\})", txt)
+    level = 0
+    for k, part in enumerate(parts):
+        if part.startswith("{") and part.endswith("}"):
+            for m in _DRAW_TAG_RE.finditer(part):
+                level = int(m.group(1)) if m.group(1) is not None else 0
+        elif level > 0 and part.strip():
+            parts[k] = scale_drawing(part, sx, sy)
+    return "".join(parts)
 _FS_RE = re.compile(r"\\fs([\d.]+)")
 _BORD_RE = re.compile(r"\\bord([\d.]+)")
 _SHAD_RE = re.compile(r"\\shad([\d.]+)")
@@ -1394,8 +1434,19 @@ def scale_positioning_tags(ass_path, orig_res, target_res):
         return f"\\move({x1*sx:.2f},{y1*sy:.2f},{x2*sx:.2f},{y2*sy:.2f}{tail})"
 
     def repl_clip(m):
-        x1, y1, x2, y2 = (float(m.group(i)) for i in (1, 2, 3, 4))
-        return f"\\clip({x1*sx:.2f},{y1*sy:.2f},{x2*sx:.2f},{y2*sy:.2f})"
+        x1, y1, x2, y2 = (float(m.group(i)) for i in (2, 3, 4, 5))
+        return f"\\{m.group(1)}({x1*sx:.2f},{y1*sy:.2f},{x2*sx:.2f},{y2*sy:.2f})"
+
+    def repl_vclip(m):
+        scale = f"{m.group(2)}," if m.group(2) else ""
+        return f"\\{m.group(1)}({scale}{scale_drawing(m.group(3), sx, sy)})"
+
+    def repl_xy(m):
+        f = sx if m.group(1) in ("xbord", "xshad") else sy
+        return f"\\{m.group(1)}{_fmt_num(float(m.group(2)) * f)}"
+
+    def repl_fsp(m): return f"\\fsp{_fmt_num(float(m.group(1)) * sx)}"
+    def repl_pbo(m): return f"\\pbo{_fmt_num(float(m.group(1)) * sy)}"
 
     def repl_fs(m): return f"\\fs{float(m.group(1)) * sy:.2f}"
     def repl_bord(m): return f"\\bord{float(m.group(1)) * sy:.2f}"
@@ -1427,9 +1478,14 @@ def scale_positioning_tags(ass_path, orig_res, target_res):
                 txt = _ORG_RE.sub(repl_org, txt)
                 txt = _MOVE_RE.sub(repl_move, txt)
                 txt = _CLIP_RE.sub(repl_clip, txt)
+                txt = _VCLIP_RE.sub(repl_vclip, txt)
                 txt = _FS_RE.sub(repl_fs, txt)
                 txt = _BORD_RE.sub(repl_bord, txt)
                 txt = _SHAD_RE.sub(repl_shad, txt)
+                txt = _XYBORD_RE.sub(repl_xy, txt)
+                txt = _FSP_RE.sub(repl_fsp, txt)
+                txt = _PBO_RE.sub(repl_pbo, txt)
+                txt = scale_drawing_text(txt, sx, sy)
                 row["text"] = txt
                 line = "Dialogue:" + ",".join(row[f] for f in fmt_fields)
         out.append(line)
@@ -1491,6 +1547,8 @@ def patch_ass_style(ass_path, orig_res=None, apply_style_profiles=True, skip_pro
     out = []
     in_script_info = False
     in_styles = False
+    is_ssa = False
+    style_fmt = None
     
     # CORRECTIF BUG 2 : Trouver le style principal une seule fois
     main_dialogue_style = _find_main_dialogue_style(ass_path)
@@ -1520,9 +1578,14 @@ def patch_ass_style(ass_path, orig_res=None, apply_style_profiles=True, skip_pro
                 if not seen_scaled_border_and_shadow:
                     out.append("ScaledBorderAndShadow: yes")
             in_script_info = stripped.lower() == "[script info]"
-            in_styles = stripped.lower() == "[v4+ styles]"
+            in_styles = stripped.lower() in ("[v4+ styles]", "[v4 styles]")
+            is_ssa = stripped.lower() == "[v4 styles]"          # v3.33 : vieux format SSA (champs différents)
+            style_fmt = None
             out.append(line)
             continue
+
+        if in_styles and stripped.lower().startswith("format:"):
+            style_fmt = [f.strip().lower() for f in stripped[len("format:"):].split(",")]
 
         if in_script_info and TARGET_PLAYRES:
             if stripped.startswith("PlayResX:"):
@@ -1541,7 +1604,24 @@ def patch_ass_style(ass_path, orig_res=None, apply_style_profiles=True, skip_pro
 
         if in_styles and line.startswith("Style:"):
             raw_fields = line[len("Style:"):].strip().split(",")
-            if len(raw_fields) < 22:
+            if is_ssa or len(raw_fields) < 22:
+                # v3.33 : SSA (« [V4 Styles] », 18 champs) — avant, rien n'était mis à l'échelle alors que
+                # PlayRes passe en 1920x1080 (texte 3x trop petit). Pas de profil FR ici (format différent),
+                # seulement la mise à l'échelle, d'après la ligne « Format: ».
+                if needs_scale and style_fmt and len(raw_fields) == len(style_fmt):
+                    ox, oy = orig_res
+                    tx, ty = TARGET_PLAYRES
+                    fx, fy = tx / ox, ty / oy
+                    try:
+                        for key, factor in (("fontsize", fy), ("outline", fy), ("shadow", fy), ("spacing", fx),
+                                            ("marginl", fx), ("marginr", fx), ("marginv", fy)):
+                            if key in style_fmt:
+                                k = style_fmt.index(key)
+                                raw_fields[k] = _fmt_num(float(raw_fields[k]) * factor) if key in ("outline", "shadow", "spacing") else str(round(float(raw_fields[k]) * factor))
+                        out.append("Style: " + ",".join(raw_fields))
+                        continue
+                    except ValueError:
+                        pass
                 out.append(line)
                 continue
                 
@@ -1584,6 +1664,8 @@ def patch_ass_style(ass_path, orig_res=None, apply_style_profiles=True, skip_pro
                     raw_fields[16] = str(round(float(raw_fields[16]) * sy))
                     # Shadow (index 17)
                     raw_fields[17] = str(round(float(raw_fields[17]) * sy))
+                    # Espacement des lettres (index 13), en pixels horizontaux (v3.33)
+                    raw_fields[13] = _fmt_num(float(raw_fields[13]) * sx)
                     # MarginL (index 19)
                     raw_fields[19] = str(round(float(raw_fields[19]) * sx))
                     # MarginR (index 20)

@@ -50,7 +50,8 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 ### Style et Typographie
 - 📐 **Redimensionnement précis** : rescaling de la résolution cible 1920x1080 avec calcul de facteur (ex: 640×360 → ×3)
 - 🎨 **Harmonisation des styles** : police Trebuchet MS 66px (dialogues), Arial 63px (incrustations)
-- ✏️ **Déflou automatique** : redimensionnement des effets \blur/\be selon facteur de scaling
+- 📐 **Effets mis à l'échelle** : positions, déplacements, découpes (`\clip`, `\iclip`, y compris en forme de dessin), dessins vectoriels (`\p1`), bordures et ombres (y compris `\xbord`/`\ybord`/`\xshad`/`\yshad`), espacement des lettres ; vieux fichiers SSA compris
+- 🌫️ **Flou préservé** : les effets `\blur`/`\be` sont gardés tels quels et signalés dans le journal
 - 📏 **Marges personnalisées** : préservation intelligente des marges sur les lignes de dialogue
 - 🆎 **Polices manquantes** : détection avec upload UI, mémorisation dans `/opt/mouflanimexer/fonts`
 
