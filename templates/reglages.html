@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Réglages · MouFlanimeXer</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+<script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
+</head>
+<body>
+<div class="container">
+    <div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}" data-sub="Réglages"></div>
+    <a class="back" href="/">← Retour au remux</a>
+
+    <div class="panel">
+        <h2>📨 Telegram</h2>
+        <div class="sub">Pour recevoir un message quand des fichiers sont traités ou demandent ton attention. Crée un bot avec @BotFather, écris-lui un message, puis colle ici son jeton et ton identifiant de discussion.</div>
+        <div class="state" id="tgState"></div>
+        <div class="field"><label for="tgToken">Jeton du bot Telegram (donné par @BotFather)</label><input type="password" id="tgToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="123456789:ABC… (laisse vide pour garder l'actuel)"></div>
+        <div class="field"><label for="tgChat">Identifiant de ta discussion</label><input type="text" id="tgChat" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Un nombre, ex. 123456789 (laisse vide pour garder l'actuel)"></div>
+        <div class="row"><button class="btn" id="tgSave">Enregistrer</button><button class="btn ghost" id="tgTest">📨 Tester Telegram</button></div>
+        <div id="tgMsg"></div>
+    </div>
+
+    <div class="panel">
+        <h2>📺 Sonarr <small style="color:var(--muted);font-weight:400">(facultatif)</small></h2>
+        <div class="sub">Après un remux, Sonarr relit la série et renomme le fichier tout seul. Sans ces réglages, il suffit de rescanner à la main.</div>
+        <div class="state" id="snState"></div>
+        <div class="field"><label for="snUrl">Adresse</label><input type="text" id="snUrl" placeholder="http://192.168.1.50:8989" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="snKey">Clé API (Sonarr → Réglages → Général)</label><input type="password" id="snKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle la clé ici (laisse vide pour garder l'actuelle)"></div>
+        <div class="row"><button class="btn ghost" id="snTest">Tester</button><button class="btn" id="snSave">Enregistrer</button></div>
+        <div id="snMsg"></div>
+    </div>
+
+    <div class="panel">
+        <h2>📁 Dossiers</h2>
+        <div class="sub">Les dossiers utilisés par l'appli (lecture seule pour l'instant : ils sont fixés dans le code).</div>
+        <div class="tabsinfo" id="folderInfo"></div>
+    </div>
+</div>
+<script>
+async function loadTg() { const s = await api('/api/settings/telegram'); $('tgState').textContent = s.configured ? `Telegram : réglé (discussion ${s.chat_hint})` : 'Telegram : pas encore réglé'; }
+async function loadSn() { const s = await api('/api/settings/sonarr'); $('snUrl').value = s.base_url || ''; $('snState').textContent = s.configured ? `Sonarr : réglé (clé ${s.hint})` : 'Sonarr : pas encore réglé'; }
+$('tgSave').addEventListener('click', async () => {
+    if (!$('tgToken').value.trim() && !$('tgChat').value.trim()) return say('tgMsg', 'Renseigne le jeton et l\'identifiant (ou utilise « Tester » pour essayer les réglages actuels).', 'warn');
+    say('tgMsg', 'Vérification de Telegram…', true);
+    const r = await post('/api/settings/telegram', {token: $('tgToken').value, chat_id: $('tgChat').value});
+    say('tgMsg', r.message || r.error, r.ok); if (r.ok) { $('tgToken').value = ''; $('tgChat').value = ''; loadTg(); }
+});
+$('tgTest').addEventListener('click', async () => { say('tgMsg', 'Envoi…', true); const r = await post('/api/settings/telegram', {}); say('tgMsg', r.message || r.error, r.ok); });
+$('snTest').addEventListener('click', async () => { say('snMsg', 'Test…', true); const r = await post('/api/settings/sonarr', {base_url: $('snUrl').value, api_key: $('snKey').value, test: true}); say('snMsg', r.message || r.error, r.ok); });
+$('snSave').addEventListener('click', async () => {
+    say('snMsg', 'Vérification…', true); const r = await post('/api/settings/sonarr', {base_url: $('snUrl').value, api_key: $('snKey').value});
+    say('snMsg', r.message || r.error, r.ok); if (r.ok) { $('snKey').value = ''; loadSn(); }
+});
+(async () => { const f = await api('/api/settings/folders'); $('folderInfo').innerHTML = f.folders.map(x => `<b>${esc(x.label)}</b> : ${esc(x.path)}${x.ok ? '' : ' ⚠️ introuvable'}`).join('<br>'); })();
+loadTg(); loadSn();
+</script>
+</body>
+</html>

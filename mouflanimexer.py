@@ -3496,7 +3496,7 @@ TEMPLATE = """
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 </head>
 <body>
-<div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}"
+<div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}" data-settings="1"
      data-sub="Remux automatique d'animes : pistes audio, sous-titres et polices"></div>
 
 {% if missing_tools %}
@@ -3889,6 +3889,14 @@ def diagnostic():
 
 
 diag.init_app(app, APP_VERSION, build_diagnostic_report)
+
+import settings_page
+settings_page.init_app(
+    app, lambda: APP_VERSION, TELEGRAM_CONFIG_PATH, SONARR_API_CONFIG_PATH,
+    lambda: [("Dossier par défaut", DEFAULT_FOLDER), ("Fichiers terminés", Path(DEFAULT_FOLDER) / "FICHIER OK"),
+             ("Journal des décisions", LOG_PATH.parent), ("À traiter (police manquante)", PENDING_REVIEW_DIR),
+             ("À traiter (intervention manuelle)", SONARR_REVIEW_DIR), ("Bibliothèque de polices", REFERENCE_FONTS_DIR)]
+    + [("Surveillance Sonarr", d) for d in SONARR_WATCH_DIRS])
 
 
 @app.route("/download_log")
