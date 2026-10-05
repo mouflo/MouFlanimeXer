@@ -506,6 +506,23 @@ from functools import wraps
 
 app = Flask(__name__)
 
+import diag
+diag.setup_logging()   # journal : console + data/mouflanimexer.log
+logger = diag.logger
+
+
+class _LoggedList(list):
+    """Le journal affiché dans la page est aussi écrit dans le fichier de journal (rien ne se perd à l'actualisation)."""
+
+    def append(self, item):
+        super().append(item)
+        try:
+            text = item.get("text", "") if isinstance(item, dict) else str(item)
+            if text.strip():
+                (logger.warning if isinstance(item, dict) and item.get("alert") else logger.info)(text)
+        except Exception:
+            pass
+
 import auth
 auth.init_app(app)  # page de connexion + protection de toutes les routes (v3.31)
 
@@ -543,7 +560,19 @@ LANGS_CHI = {"chi", "zho", "zh", "cmn"}  # chinois (mandarin, etc.)
 UNDETERMINED_LANGS = {None, "", "und", "undetermined", "mis", "zxx"}
 DEFAULT_FOLDER = "/mnt/mouflosyno/MouFlanimexer"
 PORT = 5000
-APP_VERSION = "3.31"  # Connexion sécurisée : mot de passe haché (hors GitHub), clé de session aléatoire, blocage après essais ratés, compatible Bitwarden
+BASE_VERSION = "3.31"  # Connexion sécurisée : mot de passe haché (hors GitHub), clé de session aléatoire, blocage après essais ratés, compatible Bitwarden
+
+
+def _get_version():
+    try:
+        count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=Path(__file__).resolve().parent, text=True, stderr=subprocess.DEVNULL).strip()
+        short = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).resolve().parent, text=True, stderr=subprocess.DEVNULL).strip()
+        return f"{BASE_VERSION}.{count} ({short})"
+    except Exception:
+        return BASE_VERSION
+
+
+APP_VERSION = _get_version()   # ex. 3.31.12 (a1b2c3d) : comme MouFloster et MouFlopening
 
 LOG_PATH = Path("/mnt/mouflosyno/MouFlanimexer/Log/.MouFlanimexer_log.jsonl")
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -3279,7 +3308,7 @@ STATE = {
     "idx": 0,
     "gen": None,
     "tmpdir": None,
-    "log": [],
+    "log": _LoggedList(),
     "pending": None,
     "is_running": False,
     "stop_requested": False,
@@ -3417,10 +3446,7 @@ TEMPLATE = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{% if is_running %}
-<meta http-equiv="refresh" content="2">
-{% endif %}
-<title>Remux MKV</title>
+<title>MouFlanimeXer</title>
 <link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <style>
   * { box-sizing: border-box; }
@@ -3440,17 +3466,18 @@ TEMPLATE = """
     --alert-bg: #2a1414; --alert-border: #e57373; --alert-fg: #ff8a80;
     --thumb-border: #555;
   }
-  body { font-family: sans-serif; max-width: 760px; margin: 30px auto; padding: 0 15px;
-         background: var(--bg); color: var(--fg); }
-  h1 { font-size: 1.3em; }
-  a { color: inherit; }
-  .box { border: 1px solid var(--box-border); background: var(--box-bg); border-radius: 8px; padding: 15px; margin-bottom: 20px; }
-  .box-alert { border: 2px solid var(--alert-border); background: var(--alert-bg); }
+  body { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  a { color: var(--accent); }
+  .box { background: var(--card); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .box-alert { border: 1px solid var(--alert-border); background: var(--alert-bg); }
   .box-alert b { color: var(--alert-fg); }
-  input[type=text] { width: 100%; padding: 10px; font-size: 1em;
-                      background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); }
-  button { padding: 10px 16px; margin: 4px 4px 4px 0; cursor: pointer; font-size: 0.95em; border-radius: 4px; }
-  .primary { background: #2e7d32; color: white; border: none; }
+  input[type=text] { width: 100%; }
+  button { margin: 4px 4px 4px 0; }
+  .progress-track { background: var(--field); border-radius: 6px; overflow: hidden; height: 10px; }
+  .progress-fill { background: var(--accent); height: 100%; }
+  .ok-text { color: var(--accent); font-weight: bold; }
+  .warn-text { color: var(--warn); font-weight: bold; }
+  input[type=file] { color: var(--muted); max-width: 100%; }
   ul.options { list-style: none; padding: 0; }
   ul.options li { margin: 10px 0; }
   ul.options label { display: block; padding: 6px 0; }
@@ -3458,29 +3485,19 @@ TEMPLATE = """
   #log { background: var(--log-bg); color: var(--log-fg); padding: 10px; height: 350px; overflow-y: auto;
          font-family: monospace; font-size: 0.85em; border-radius: 6px; white-space: pre-wrap;
          overflow-x: hidden; word-break: break-word; }
-  .warn { color: #ff5252; font-weight: bold; }
+  .warn { color: var(--err); font-weight: bold; }
   .preview-thumb { max-width: 160px; width: 100%; display: block; margin-top: 6px; border-radius: 4px; border: 1px solid var(--thumb-border); }
-  .theme-toggle { background: var(--box-bg); color: var(--fg); border: 1px solid var(--box-border);
-                   border-radius: 4px; padding: 4px 10px; font-size: 0.85em; cursor: pointer; }
   @media (max-width: 480px) {
-    body { margin: 10px auto; padding: 0 10px; }
-    h1 { font-size: 1.15em; }
-    button { width: 100%; }
+    body { padding: 10px; }
+    form button { width: 100%; }
   }
 </style>
-<script>
-  (function() {
-    var saved = localStorage.getItem("mouflanimexer_theme");
-    var theme = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", theme);
-  })();
-</script>
+<link rel="stylesheet" href="/ui/mou-ui.css">
+<script src="/ui/mou-ui.js" defer></script>
 </head>
 <body>
-<a href="/logout" style="float: right; color: #ff5252; text-decoration: none; font-weight: bold; margin-top: 5px;">Se déconnecter</a>
-<a href="/diagnostic" target="_blank" style="float: right; margin-right: 12px; margin-top: 5px; color: var(--fg); text-decoration: none; font-size: 0.9em;">🩺 Diagnostic</a>
-<button class="theme-toggle" onclick="toggleTheme()" style="float: right; margin-right: 10px;" id="theme-btn">🌙</button>
-<h1>Remux MKV — audio / sous-titres / style <span style="font-size:0.5em;color:#888;font-weight:normal;">v{{ version }}</span></h1>
+<div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}"
+     data-sub="Remux automatique d'animes : pistes audio, sous-titres et polices"></div>
 
 {% if missing_tools %}
 <div class="box warn">
@@ -3534,9 +3551,9 @@ TEMPLATE = """
     {% if not is_running and not pending and not paused %}
     <button class="primary" type="submit">Lancer le traitement</button>
     {% elif is_running %}
-    <p style="color: #2e7d32; font-weight: bold;">Traitement en cours... (actualisation auto)</p>
+    <p class="ok-text">Traitement en cours... (actualisation auto)</p>
     {% elif paused %}
-    <p style="color: #b26a00; font-weight: bold;">⏸ En pause.</p>
+    <p class="warn-text">⏸ En pause.</p>
     {% endif %}
   </form>
 
@@ -3546,22 +3563,22 @@ TEMPLATE = """
       <span>Fichier {{ [idx + 1, queue_len]|min }} / {{ queue_len }}</span>
       <span>{{ ((idx / queue_len) * 100) | round | int }}%</span>
     </div>
-    <div style="background:#eee; border-radius:6px; overflow:hidden; height:10px;">
-      <div style="background:#2e7d32; height:100%; width:{{ ((idx / queue_len) * 100) | round | int }}%;"></div>
+    <div class="progress-track">
+      <div class="progress-fill" style="width:{{ ((idx / queue_len) * 100) | round | int }}%;"></div>
     </div>
   </div>
   <div style="display:flex; gap:8px; margin-top:10px;">
     {% if is_running %}
     <form method="post" action="/pause" style="flex:1;">
-      <button type="submit" style="background:#b26a00;color:white;border:none;width:100%;">⏸ Pause</button>
+      <button type="submit" class="warn" style="width:100%;">⏸ Pause</button>
     </form>
     {% elif paused %}
     <form method="post" action="/resume" style="flex:1;">
-      <button type="submit" style="background:#2e7d32;color:white;border:none;width:100%;">▶ Reprendre</button>
+      <button type="submit" style="width:100%;">▶ Reprendre</button>
     </form>
     {% endif %}
     <form method="post" action="/stop" style="flex:1;">
-      <button type="submit" style="background:#b71c1c;color:white;border:none;width:100%;">⏹ Arrêter</button>
+      <button type="submit" class="danger" style="width:100%;">⏹ Arrêter</button>
     </form>
   </div>
   {% endif %}
@@ -3634,7 +3651,7 @@ TEMPLATE = """
       <input type="file" name="font_file" accept=".ttf,.otf" multiple>
       <div style="display:flex; gap:8px; margin-top:10px;">
         <button class="primary" type="submit" style="flex:1;">Ajouter et continuer</button>
-        <button type="submit" name="skip" value="1" style="flex:1;background:#555;color:white;border:none;">Ignorer</button>
+        <button type="submit" name="skip" value="1" class="ghost" style="flex:1;">Ignorer</button>
       </div>
     </form>
   </div>
@@ -3642,7 +3659,7 @@ TEMPLATE = """
 {% endif %}
 
 {% if not is_running and not pending and queue_len > 0 and idx >= queue_len %}
-<div class="box" style="border-color:#2e7d32;">
+<div class="box" style="border-left:3px solid var(--accent);">
   <b>Traitement terminé.</b>
 </div>
 {% endif %}
@@ -3652,32 +3669,17 @@ TEMPLATE = """
   <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
     <b>Journal :</b>
     <div>
-      <a href="/download_log" target="_blank" style="background:#2e7d32;color:white;border:none;border-radius:4px;padding:4px 10px;font-size:0.8em;text-decoration:none;">Télécharger</a>
+      <a href="/download_log" target="_blank" class="mou-btn ghost small" style="text-decoration:none;display:inline-block;">Télécharger</a>
       <form method="post" action="/clear_log" style="display:inline;">
-        <button type="submit" style="background:#555;color:white;border:none;border-radius:4px;padding:4px 10px;font-size:0.8em;">Effacer l'affichage</button>
+        <button type="submit" class="ghost" style="padding:6px 12px;font-size:.85rem;">Effacer l'affichage</button>
       </form>
     </div>
   </div>
-  <div id="log">{% for entry in log %}<div{% if entry.alert %} style="color:#ff5252;font-weight:bold;"{% endif %}>{{ entry.text }}{% if entry.image %}<br><a href="{{ entry.image }}" target="_blank"><img class="preview-thumb" src="{{ entry.image }}" alt="capture"></a>{% endif %}</div>{% endfor %}</div>
+  <div id="log">{% for entry in log %}<div{% if entry.alert %} style="color:var(--err);font-weight:bold;"{% endif %}>{{ entry.text }}{% if entry.image %}<br><a href="{{ entry.image }}" target="_blank"><img class="preview-thumb" src="{{ entry.image }}" alt="capture"></a>{% endif %}</div>{% endfor %}</div>
 </div>
 {% endif %}
 
 <script>
-  function toggleTheme() {
-      var current = document.documentElement.getAttribute("data-theme");
-      var next = current === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", next);
-      localStorage.setItem("mouflanimexer_theme", next);
-      updateThemeBtn();
-  }
-  function updateThemeBtn() {
-      var btn = document.getElementById("theme-btn");
-      if (!btn) return;
-      var current = document.documentElement.getAttribute("data-theme");
-      btn.textContent = current === "dark" ? "☀️" : "🌙";
-  }
-  updateThemeBtn();
-
   var logDiv = document.getElementById("log");
   if (logDiv) {
       logDiv.scrollTop = logDiv.scrollHeight;
@@ -3691,6 +3693,10 @@ TEMPLATE = """
   if (target) {
       target.scrollIntoView({block: "start"});
   }
+  {% endif %}
+  {% if is_running %}
+  // actualisation automatique pendant un traitement (suspendue si une fenêtre est ouverte)
+  setInterval(function () { if (!(window.MouModalOpen && window.MouModalOpen())) location.reload(); }, 2000);
   {% endif %}
 </script>
 </body>
@@ -3864,6 +3870,9 @@ def build_diagnostic_report():
         lines += ["", "--- sonarr_watch.log (40 dernières lignes) ---", _tail_file(watch_log, 40)]
     lines += [
         "",
+        "--- Journal de l'appli (150 dernières lignes) ---",
+        diag.tail(diag.LOG_FILE, 150),
+        "",
         "--- Déploiement automatique (40 dernières lignes) ---",
         _tail_file("/var/log/mouflanimexer-deploy.log", 40),
         "",
@@ -3873,80 +3882,13 @@ def build_diagnostic_report():
     return _redact("\n".join(lines))
 
 
-DIAG_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Diagnostic — MouFlanimeXer</title>
-<link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
-<style>
-  * { box-sizing: border-box; }
-  :root { --bg: #fff; --fg: #111; --muted: #888; --box-bg: #f4f4f4; --box-border: #ddd; }
-  :root[data-theme="dark"] { --bg: #121212; --fg: #eee; --muted: #aaa; --box-bg: #1e1e1e; --box-border: #333; }
-  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); max-width: 1000px; margin: 20px auto; padding: 0 14px; }
-  h1 { font-size: 1.3em; }
-  p { color: var(--muted); font-size: 0.9em; }
-  textarea { width: 100%; height: 65vh; min-height: 260px; background: #000; color: #9f9; border: 1px solid var(--box-border);
-             border-radius: 6px; padding: 10px; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-  button, a.btn { border: 0; border-radius: 4px; padding: 10px 16px; font-size: 0.95em; cursor: pointer; color: #fff; background: #555; text-decoration: none; }
-  button.primary { background: #2e7d32; }
-  #msg { margin: 6px 0; font-weight: bold; min-height: 1.4em; }
-  @media (max-width: 480px) { button, a.btn { width: 100%; text-align: center; } }
-</style>
-<script>
-  (function() {
-    var saved = localStorage.getItem("mouflanimexer_theme");
-    var theme = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", theme);
-  })();
-</script>
-</head>
-<body>
-<h1>🩺 Diagnostic — MouFlanimeXer v{{ version }}</h1>
-<p>État du serveur et derniers journaux. Les mots de passe et jetons sont masqués. Clique sur « Copier tout » puis colle le texte dans la conversation.</p>
-<textarea id="report" readonly spellcheck="false">{{ report }}</textarea>
-<div id="msg"></div>
-<div class="row">
-  <button class="primary" onclick="copyAll()">📋 Copier tout</button>
-  <a class="btn" href="/diagnostic">🔄 Rafraîchir</a>
-  <a class="btn" href="/">← Retour</a>
-</div>
-<script>
-  var box = document.getElementById("report");
-  box.scrollTop = box.scrollHeight;
-  function copyAll() {
-      var msg = document.getElementById("msg");
-      function done(ok) {
-          msg.textContent = ok ? "✅ Copié : colle-le maintenant dans la conversation." : "⚠️ Copie automatique impossible : le texte est sélectionné, fais « Copier » à la main.";
-      }
-      if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(box.value).then(function() { done(true); }, fallback);
-      } else { fallback(); }
-      function fallback() {
-          box.focus(); box.select();
-          var ok = false;
-          try { ok = document.execCommand("copy"); } catch (e) {}
-          done(ok);
-      }
-  }
-</script>
-</body>
-</html>
-"""
-
-
 @app.route("/diagnostic")
 @requires_auth
 def diagnostic():
-    try:
-        report = build_diagnostic_report()
-    except Exception as e:  # le diagnostic ne doit jamais être lui-même la cause d'une panne
-        import traceback
-        report = f"Impossible de construire le rapport complet : {type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-    return render_template_string(DIAG_TEMPLATE, report=_redact(report), version=APP_VERSION)
+    return redirect("/")   # le journal s'ouvre maintenant dans la fenêtre « Journal » de la page d'accueil
+
+
+diag.init_app(app, APP_VERSION, build_diagnostic_report)
 
 
 @app.route("/download_log")
@@ -3962,7 +3904,7 @@ def download_log():
 @app.route("/clear_log", methods=["POST"])
 @requires_auth
 def clear_log():
-    STATE["log"] = []
+    STATE["log"] = _LoggedList([])
     return redirect(url_for("index"))
 
 @app.route("/scan", methods=["POST"])
@@ -3980,7 +3922,7 @@ def scan():
     if not p.is_dir():
         STATE["files"] = []
         STATE["series_map"] = {}
-        STATE["log"] = [{"text": f"Dossier introuvable : {folder}", "alert": True}]
+        STATE["log"] = _LoggedList([{"text": f"Dossier introuvable : {folder}", "alert": True}])
     else:
         patterns = ["**/*.mkv", "**/*.mp4"] if recursive else ["*.mkv", "*.mp4"]
         found = sorted((f for pat in patterns for f in p.glob(pat)), key=_natural_sort_key)
@@ -4047,7 +3989,7 @@ def scan():
         for series, files in sorted(series_map.items()):
             log_lines.append({"text": f"   • {series} ({len(files)} fic.)", "alert": False})
         
-        STATE["log"] = log_lines
+        STATE["log"] = _LoggedList(log_lines)
     STATE["excluded_series"] = load_excluded_series()
     STATE["queue"] = []
     STATE["idx"] = 0
@@ -4152,7 +4094,7 @@ def start():
     STATE["queue"] = [f for f in STATE["files"] if extract_series_name(f) not in excluded]
 
     STATE["idx"] = 0
-    STATE["log"] = []
+    STATE["log"] = _LoggedList([])
     STATE["gen"] = None
     STATE["pending"] = None
     STATE["send_value"] = None

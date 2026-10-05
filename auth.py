@@ -102,58 +102,44 @@ def _clear_fails(ip):
         _fails.pop(ip, None)
 
 
-LOGIN_HTML = """<!doctype html>
+LOGIN_HTML = """<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Connexion — MouFlanimeXer</title>
+<title>Connexion · MouFlanimeXer</title>
 <link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; background: #121212; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; }
-  .login-box { background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 30px; width: 100%; max-width: 360px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-  h2 { margin-top: 0; font-size: 1.3em; text-align: center; color: #fff; }
-  label { display: block; margin-top: 15px; font-size: 0.9em; color: #aaa; }
-  input[type=text], input[type=password] { width: 100%; padding: 10px; margin-top: 5px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; font-size: 16px; }
-  input:focus { outline: none; border-color: #2e7d32; }
-  .remember { display: flex; align-items: center; gap: 8px; margin-top: 15px; font-size: 0.9em; color: #aaa; }
-  .remember input { width: 18px; height: 18px; accent-color: #2e7d32; margin: 0; }
-  .remember label { margin: 0; }
-  button { width: 100%; padding: 10px; margin-top: 22px; background: #2e7d32; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 1em; }
-  button:hover { background: #388e3c; }
-  .error { color: #ff5252; font-size: 0.9em; margin-top: 15px; text-align: center; }
-  .setup { font-size: 0.9em; line-height: 1.5; color: #ccc; margin-top: 15px; }
-  .setup code { display: block; background: #2a2a2a; padding: 10px; border-radius: 4px; margin: 10px 0; user-select: all; word-break: break-all; color: #9f9; }
-</style>
+<link rel="stylesheet" href="/ui/mou-ui.css">
 </head>
-<body>
-<div class="login-box">
-  <h2>MouFlanimeXer</h2>
-  {% if not configured %}
-    <div class="error">Aucun identifiant n'est encore défini sur ce serveur.</div>
-    <div class="setup">
-      Tape cette commande dans le terminal du serveur, puis reviens ici :
-      <code>bash /opt/mouflanimexer/set-login.sh</code>
-      Elle te demandera un identifiant et un mot de passe.
-    </div>
-  {% else %}
-    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
-    <form method="post" action="/login" autocomplete="on">
-      <input type="hidden" name="next" value="{{ next }}">
-      <label for="username">Identifiant</label>
-      <input type="text" id="username" name="username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus value="{{ username }}">
-      <label for="password">Mot de passe</label>
-      <input type="password" id="password" name="password" autocomplete="current-password" required>
-      <div class="remember">
-        <input type="checkbox" id="remember" name="remember" value="1" checked>
-        <label for="remember">Rester connecté {{ days }} jours</label>
-      </div>
-      <button type="submit">Se connecter</button>
-    </form>
-  {% endif %}
-</div>
+<body class="mou-login">
+<main class="box">
+    <h1 class="mou-title big"><img src="/icons/mouflanimexer.svg" alt=""><span><span class="w">MouFl</span><span class="g">animeXer</span></span></h1>
+    <div class="sub">Remux automatique d'animes</div>
+    {% if not configured %}
+        <div class="error">Aucun identifiant n'est encore défini sur ce serveur.</div>
+        <div class="setup">
+            Tape cette commande dans le terminal du serveur, puis reviens ici :
+            <code>bash /opt/mouflanimexer/set-login.sh</code>
+            Elle te demandera un identifiant et un mot de passe.
+        </div>
+    {% else %}
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+        <form method="post" action="/login" autocomplete="on">
+            <input type="hidden" name="next" value="{{ next }}">
+            <label for="username">Identifiant</label>
+            <input type="text" id="username" name="username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus value="{{ username }}">
+            <label for="password">Mot de passe</label>
+            <input type="password" id="password" name="password" autocomplete="current-password" required>
+            <div class="remember">
+                <input type="checkbox" id="remember" name="remember" value="1" checked>
+                <label for="remember" style="margin:0">Rester connecté {{ days }} jours</label>
+            </div>
+            <button type="submit">Se connecter</button>
+        </form>
+    {% endif %}
+    {% if version %}<div class="ver">{{ version }}</div>{% endif %}
+</main>
 </body>
 </html>
 """
@@ -206,6 +192,11 @@ def init_app(app):
             resp.mimetype = "application/manifest+json"
         return resp
 
+    @app.route("/ui/<path:name>")
+    def app_ui(name):
+        from flask import send_from_directory
+        return send_from_directory(BASE_DIR / "ui", name, max_age=300)
+
     @app.route("/favicon.ico")
     def app_favicon():
         from flask import send_from_directory
@@ -213,7 +204,7 @@ def init_app(app):
 
     @app.before_request
     def require_login():
-        if request.path in ("/login", "/favicon.ico") or request.path.startswith("/icons/") or is_logged_in():
+        if request.path in ("/login", "/favicon.ico") or request.path.startswith(("/icons/", "/ui/")) or is_logged_in():
             return None
         target = request.full_path.rstrip("?") if request.method == "GET" else "/"
         return redirect("/login?next=" + quote(target, safe=""))

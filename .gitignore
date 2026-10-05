@@ -11,3 +11,4 @@ venv/
 login.json
 session_key
 *.tmp
+data/
