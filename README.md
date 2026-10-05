@@ -31,6 +31,10 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 
 ![La fenêtre « Journal et diagnostic »](docs/screenshots/journal.png)
 
+**La page ⚙️ Réglages : Telegram, Sonarr et dossiers utilisés**
+
+![La page Réglages : Telegram, Sonarr et dossiers utilisés](docs/screenshots/reglages.png)
+
 **Sur téléphone**
 
 ![Sur téléphone](docs/screenshots/mobile.png)
@@ -58,12 +62,13 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 
 ### Intégrations & Automatisation
 - 📡 **Sonarr → Traitement → Emby** : watcher cron détecte nouveaux fichiers, traite en place, intègre à la biblio
-- 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus
+- 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus (à régler depuis la page ⚙️ Réglages)
+- ⚙️ **Page Réglages** : Telegram, Sonarr et liste des dossiers, même page que dans MouFloster et MouFlopening
 - 🔄 **Auto-déploiement GitHub** : git pull auto toutes les minutes, redémarrage du service si changements
 - 🌙 **Mode sombre** : interface web responsive avec toggle clair/sombre (localStorage)
 
-### Formats Supportés
-- 📦 **Conteneurs** : MKV (natif), MP4 (detection + conversion → MKV)
+### Formats pris en charge
+- 📦 **Conteneurs** : MKV (natif), MP4 (détection + conversion → MKV)
 - 📄 **Sous-titres** : ASS (retraitement), SRT (conversion → ASS), PGS (OCR → ASS)
 - 🎥 **OCR** : tesseract-ocr + tesseract-ocr-fra pour pistes bitmap
 
@@ -75,9 +80,9 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 - MKVToolNix (mkvmerge, mkvextract, mkvinfo)
 - Tesseract OCR (optionnel, pour sous-titres PGS)
 
-### Setup sur Proxmox/LXC
+### Installation sur Proxmox/LXC
 
-\`\`\`bash
+```bash
 # Cloner le dépôt
 git clone https://github.com/mouflo/mouflanimexer.git /opt/mouflanimexer
 cd /opt/mouflanimexer
@@ -90,62 +95,62 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Installer outils système
-sudo apt-get install ffmpeg mkvtoolnix tesseract-ocr tesseract-ocr-fra
-\`\`\`
+apt-get install ffmpeg mkvtoolnix tesseract-ocr tesseract-ocr-fra
+```
 
 ## 📖 Utilisation
 
 ### Mode Interactif Web
 
-\`\`\`bash
+```bash
 cd /opt/mouflanimexer
 source venv/bin/activate
 python3 mouflanimexer.py
-\`\`\`
+```
 
-Puis accédez à \`http://localhost:5000\` (login: mouflo)
+Puis ouvre `http://localhost:5000` (identifiant et mot de passe définis avec `bash set-login.sh`)
 
 **Flux:**
 1. **Scan** → détection de la série/saison
 2. **Affichage** → fichiers trouvés avec infos pistes
 3. **Questions interactives** → validation des choix ambigus (full/forcé, marges, polices)
 4. **Traitement** → remuxage et retraitement des sous-titres
-5. **Sortie** → fichiers finalisés dans \`FICHIER OK/\`, fichiers zappés dans \`À TRAITER/\`
+5. **Sortie** → fichiers finalisés dans `FICHIER OK/`, fichiers zappés dans `À TRAITER/`
 
 ### Mode Watcher Sonarr (Automatisé)
 
-\`\`\`bash
+```bash
 # Initialiser état des fichiers existants (UNE SEULE FOIS)
 python3 mouflanimexer.py --seed-sonarr-state
 
 # Puis ajouter à crontab (toutes les 2 minutes):
 */2 * * * * /opt/mouflanimexer/venv/bin/python3 /opt/mouflanimexer/mouflanimexer.py --watch-sonarr >> /opt/mouflanimexer/watcher.log 2>&1
-\`\`\`
+```
 
 ### Mode Service Systemd
 
-\`\`\`bash
-# Créer service
-sudo systemctl enable mouflanimexer
-sudo systemctl start mouflanimexer
-sudo systemctl status mouflanimexer
+```bash
+# Activer et démarrer le service
+systemctl enable mouflanimexer
+systemctl start mouflanimexer
+systemctl status mouflanimexer
 
-# Logs
-sudo journalctl -u mouflanimexer -f
-\`\`\`
+# Journal
+journalctl -u mouflanimexer -f
+```
 
 ### Auto-déploiement GitHub
 
 Ajouter à crontab root (toutes les minutes):
-\`\`\`bash
+```bash
 * * * * * /opt/mouflanimexer/deploy.sh >> /opt/mouflanimexer/deploy.log 2>&1
-\`\`\`
+```
 
 ## ⚙️ Configuration
 
 ### Variables d'Environnement
 
-\`\`\`bash
+```bash
 # Dossier racine des séries (NAS, local, etc.)
 ANIME_ROOT=/mnt/mouflosyno/Emby-Media/Manga
 
@@ -160,17 +165,18 @@ PLAYRES_X=1920
 PLAYRES_Y=1080
 DEFAULT_FONT="Trebuchet MS"
 DEFAULT_FONT_SIZE=66
-\`\`\`
+```
 
-### telegram_config.json (Optionnel)
+### Telegram (optionnel)
 
-\`\`\`json
+Le plus simple : page **⚙️ Réglages** → Telegram (le jeton est vérifié, puis un message de test est envoyé). Le résultat est enregistré dans `telegram_config.json` (hors dépôt git) :
+
+```json
 {
-  "enabled": true,
   "bot_token": "123456:ABCDEFG...",
   "chat_id": "123456789"
 }
-\`\`\`
+```
 
 ### excluded_series.json (Auto-généré)
 
@@ -179,7 +185,7 @@ Géré via l'interface web → cases à cocher par série + sauvegarde automatiq
 ## 🎨 Interface Web
 
 ### Fonctionnalités
-- ✅ Page de connexion (login: mouflo)
+- ✅ Page de connexion (identifiant et mot de passe à toi)
 - 📊 Affichage hiérarchique (Série/Saison/Épisode)
 - 🖼️ Miniatures vidéo générées par FFmpeg (repérage des problèmes)
 - ❓ Boîtes de question en rouge (repérage immédiat)
@@ -190,7 +196,7 @@ Géré via l'interface web → cases à cocher par série + sauvegarde automatiq
 
 ## 📊 Architecture
 
-\`\`\`
+```
 mouflanimexer/
 ├── mouflanimexer.py         # Application principale
 ├── requirements.txt          # Dépendances Python
@@ -204,12 +210,12 @@ mouflanimexer/
 ├── watcher.log              # Logs du watcher Sonarr
 ├── deploy.log               # Logs déploiement auto
 └── FICHIER OK/              # Fichiers traités ✅
-\`\`\`
+```
 
 ## 🔄 Workflow Complet (Sonarr → Emby)
 
-1. **Sonarr télécharge** → \`/mnt/mouflosyno/Emby-Media/Manga/Serie/S01/episode.mp4\`
-2. **Cron watcher** → détecte fichier, lance \`--watch-sonarr\`
+1. **Sonarr télécharge** → `/mnt/mouflosyno/Emby-Media/Manga/Serie/S01/episode.mp4`
+2. **Cron watcher** → détecte fichier, lance `--watch-sonarr`
 3. **MouFlanimeXer** → traite, remplace en place (hardlinks)
 4. **Emby scan** → actualise biblio, affiche nouveau poster/métadonnées
 5. **Notifications** → Telegram si problème (police manquante, ambiguïté)
@@ -225,31 +231,31 @@ mouflanimexer/
 **Solution** : Auto-reclassée en piste complète (v2.4+)
 
 ### Polices manquantes
-**Action** : Fichier déplacé vers \`À TRAITER/\`, notif Telegram  
+**Action** : Fichier déplacé vers `À TRAITER/`, notif Telegram  
 **Solution** : Upload via interface web ou ignorer
 
 ### Double redimensionnement (résolution fake)
 **Cause** : Déclaration 1920×1080 mais contenu 640×360  
-**Solution** : Heuristique \`get_true_orig_res()\` détecte et recalcule facteur
+**Solution** : Heuristique `get_true_orig_res()` détecte et recalcule facteur
 
 ## 📝 Historique des Versions
 
-- **v1.0-1.22** : Prototype web interactif, features audio/sous-titres, detection polices
+- **v1.0-1.22** : Prototype web interactif, fonctions audio/sous-titres, détection des polices
 - **v2.0-2.5** : Corrections heuristiques, miroir, bug PlayResX/Y
-- **v3.0-3.1** : Support PGS (OCR), Sonarr watcher, auto-déploiement GitHub
+- **v3.0-3.1** : Prise en charge PGS (OCR), Sonarr watcher, auto-déploiement GitHub
 - **v3.29** : Watcher résilient (os.walk vs rglob), notifications Telegram
 
 ## 🤝 Contribution
 
-Consultez [CONTRIBUTING.md](.github/CONTRIBUTING.md) pour les directives.
+Consulte [CONTRIBUTING.md](.github/CONTRIBUTING.md) pour les directives.
 
 ## 📄 Licence
 
 MIT - voir [LICENSE](LICENSE)
 
-## 📞 Support
+## 📞 Aide
 
-Problèmes? Ouvrez une [issue sur GitHub](https://github.com/mouflo/mouflanimexer/issues).
+Un problème ? Ouvre une [issue sur GitHub](https://github.com/mouflo/mouflanimexer/issues).
 
 ---
 
