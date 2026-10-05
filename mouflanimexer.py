@@ -657,7 +657,7 @@ PENDING_REVIEW_DIR = WORK_ROOT / "A traiter (police manquante)"
 # du remux. Les cas nécessitant une décision humaine (sous-titre full/forcé
 # ambigu, police obligatoire introuvable) sont mis de côté ici plutôt que
 # de deviner, avec notification Telegram.
-SONARR_WATCH_DIRS = [Path(p) for p in (_PATHS.get("sonarr_watch_dirs") or DEFAULT_WATCH_DIRS)]
+SONARR_WATCH_DIRS = [Path(p) for p in (_PATHS["sonarr_watch_dirs"] if "sonarr_watch_dirs" in _PATHS else DEFAULT_WATCH_DIRS)]   # liste vide = surveillance désactivée
 SONARR_REVIEW_DIR = WORK_ROOT / "A traiter (intervention manuelle)"
 SONARR_STATE_PATH = Path("/opt/mouflanimexer/sonarr_watch_state.json")
 # Un fichier doit être stable (non modifié) depuis au moins ce délai avant
@@ -2909,7 +2909,7 @@ def run_sonarr_watch_once():
     except OSError:
         lock_file = None
     missing = [d for d in SONARR_WATCH_DIRS if not d.exists()]
-    if missing and len(missing) == len(SONARR_WATCH_DIRS):
+    if not SONARR_WATCH_DIRS or len(missing) == len(SONARR_WATCH_DIRS):
         return          # partage réseau non monté : rien à faire (et surtout rien à créer en local)
     state = _load_sonarr_state()
     failures = _load_failures()
@@ -2925,6 +2925,7 @@ def run_sonarr_watch_once():
             continue    # déjà en échec, pas encore l'heure de réessayer
         files.append(f)
     if not files:
+        _save_sonarr_state(state)      # fichiers reconnus « déjà traités » pendant le parcours : on les retient
         return
 
     tmpdir = Path(tempfile.mkdtemp(prefix="mouflanimexer_sonarr_"))

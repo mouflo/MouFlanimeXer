@@ -132,7 +132,7 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
         cur = _read(paths_file) if paths_file else {}
         return jsonify({"work_root": cur.get("work_root") or defaults.get("work_root", ""),
                         "scan_default": cur.get("scan_default") or "",
-                        "watch_dirs": cur.get("sonarr_watch_dirs") or defaults.get("sonarr_watch_dirs", []),
+                        "watch_dirs": cur["sonarr_watch_dirs"] if "sonarr_watch_dirs" in cur else defaults.get("sonarr_watch_dirs", []),
                         "busy": bool(busy_fn and busy_fn())})
 
     @app.route("/api/settings/paths", methods=["POST"])
