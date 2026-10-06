@@ -3056,6 +3056,18 @@ def run_sonarr_watch_once():
                 pass
         return
     state = _load_sonarr_state()
+    if WATCH_MP4 and not state.get("__mp4_connus__"):
+        # v3.33.15 : première fois que les .mp4 sont surveillés → ceux déjà présents sont « déjà connus » (sinon tout
+        # l'existant serait retraité d'un coup, comme les Specials d'Attack on Titan). Seuls les .mp4 arrivés ensuite comptent.
+        for d in SONARR_WATCH_DIRS:
+            for f in _iter_mkv_files(d):
+                if f.suffix.lower() == ".mp4":
+                    try:
+                        state.setdefault(str(f), f.stat().st_mtime)
+                    except OSError:
+                        pass
+        state["__mp4_connus__"] = 1
+        _save_sonarr_state(state)
     failures = _load_failures()
     now = time.time()
     files = []
