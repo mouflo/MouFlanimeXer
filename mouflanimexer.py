@@ -4194,6 +4194,8 @@ def diagnostic():
 diag.init_app(app, APP_VERSION, build_diagnostic_report)
 
 import settings_page
+import redemarrage
+redemarrage.init_app(app, Path(__file__).resolve().parent)
 settings_page.init_app(
     app, lambda: APP_VERSION, TELEGRAM_CONFIG_PATH, SONARR_API_CONFIG_PATH,
     lambda: [("Fichiers terminés", OK_DIR), ("Copies miroir", MIRROR_ROOT_BASE), ("Sous-titres d'origine", ASS_DIR),
@@ -4541,4 +4543,7 @@ if __name__ == "__main__":
     except Exception:
         ip = "<ip-de-ce-serveur>"
     print(f"Ouvre ton navigateur sur : http://{ip}:{PORT}")
+    # Alerte Telegram après un plantage ou un redémarrage du serveur (seulement l'interface web, pas le surveillant)
+    redemarrage.verifier(Path(__file__).resolve().parent, "MouFlanimeXer",
+                         Path(__file__).resolve().parent / "data" / "mouflanimexer.log", send_telegram_notification)
     app.run(host="0.0.0.0", port=PORT, debug=False)
