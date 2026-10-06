@@ -77,11 +77,19 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
         cur = _read(telegram_path)
         tok, chat = str(body.get("token", "")).strip(), str(body.get("chat_id", "")).strip()
         thread = str(body["thread_id"]).strip() if "thread_id" in body else str(cur.get("thread_id") or "")
+        if body.get("action") == "lien":
+            trouve = lire_lien(str(body.get("lien", "")))
+            if not trouve:
+                return jsonify({"ok": False, "error": "Ce lien ne ressemble pas à un lien de message de groupe (https://t.me/c/…). Dans le sujet, appui long sur un message → « Copier le lien »."}), 400
+            return jsonify({"ok": True, "chat_id": trouve[0], "thread_id": trouve[1],
+                            "message": "Groupe et sujet lus dans le lien : appuie sur « Enregistrer » (un message de test sera envoyé)."})
         if body.get("action") == "detect":
             tok = tok or cur.get("bot_token", "")
             if not _TOKEN_RE.match(tok):
                 return jsonify({"ok": False, "error": "Colle d'abord le jeton du bot (ou enregistre-le)."}), 400
             code, text = _http(f"https://api.telegram.org/bot{tok}/getUpdates", payload={"limit": 50, "timeout": 0})
+            if code != 200 and "webhook" in str(text).lower():
+                return jsonify({"ok": False, "error": WEBHOOK}), 400
             try:
                 maj = json.loads(text).get("result", []) if code == 200 else []
             except ValueError:
@@ -107,7 +115,7 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
         if code != 200:
             return jsonify({"ok": False, "error": ("Telegram refuse ce jeton" if code in (401, 404) else "Telegram injoignable") + (". Rien n'a été enregistré." if not test_only else ".")}), 400
         essai = {"chat_id": chat, "text": "✅ MouFlanimeXer : Telegram fonctionne, tu recevras ici les comptes rendus de remux 🎬"}
-        if thread:
+        if thread and int(thread) != 1:          # 1 = sujet « Général » : Telegram veut qu'on ne précise rien
             essai["message_thread_id"] = int(thread)
         code, text = _http(f"https://api.telegram.org/bot{tok}/sendMessage", payload=essai)
         if code != 200:
@@ -192,3 +200,15 @@ def init_app(app, version_fn, telegram_path, sonarr_path, folders_fn, paths_file
         logger.info("Dossiers mis à jour depuis la page web : travail %s · scan %s · surveillés %s", work, scan or "(travail)", ", ".join(watch) or "(aucun)")
         threading.Thread(target=lambda: (time.sleep(1.5), os._exit(0)), daemon=True).start()   # systemd relance l'appli
         return jsonify({"ok": True, "message": "Enregistré. L'appli redémarre pour relire les dossiers… (le surveillant Sonarr les prend au prochain passage)"})
+
+
+WEBHOOK = "Ce bot est déjà branché sur une autre application (par exemple Jeedom) : Telegram lui envoie directement les messages, l'appli ne peut donc pas les lire pour détecter quoi que ce soit. Utilise plutôt « Lien d'un message » (appui long sur un message du sujet → Copier le lien), ou crée un bot réservé à tes applis avec @BotFather."
+
+_LIEN = re.compile(r"t\.me/c/(\d{5,})/(\d+)(?:/(\d+))?")
+
+
+def lire_lien(lien):
+    """Lien d'un message de groupe (appui long → « Copier le lien ») → (groupe, sujet) ou None.
+    https://t.me/c/1234567890/45/678 : groupe -1001234567890, sujet 45 ; https://t.me/c/1234567890/678 : sujet « Général »."""
+    m = _LIEN.search(lien or "")
+    return ("-100" + m.group(1), m.group(2) if m.group(3) else "") if m else None

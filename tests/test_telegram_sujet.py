@@ -63,3 +63,11 @@ class ReglagesSujet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LienTest(unittest.TestCase):
+    def test_lien_de_message(self):
+        import settings_page
+        self.assertEqual(settings_page.lire_lien("https://t.me/c/1234567890/45/678"), ("-1001234567890", "45"))
+        self.assertEqual(settings_page.lire_lien("t.me/c/1234567890/678"), ("-1001234567890", ""))
+        self.assertIsNone(settings_page.lire_lien("https://exemple.fr"))

@@ -922,7 +922,7 @@ def send_telegram_notification(message):
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         corps = {"chat_id": chat_id, "text": message}
         thread = load_telegram_thread()
-        if thread:
+        if thread and int(thread) != 1:          # 1 = sujet « Général » : rien à préciser
             corps["message_thread_id"] = thread
         payload = json.dumps(corps).encode("utf-8")
         req = _urllib_request.Request(
