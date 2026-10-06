@@ -685,6 +685,15 @@ def load_telegram_config():
     return None, None
 
 
+def load_telegram_thread():
+    """Numéro du « sujet » d'un groupe Telegram à sujets (facultatif, propre à MouFlanimeXer) ou None."""
+    try:
+        t = str(json.loads(TELEGRAM_CONFIG_PATH.read_text(encoding="utf-8")).get("thread_id") or "").strip()
+        return int(t) if t.isdigit() else None
+    except Exception:
+        return None
+
+
 # Configuration API Sonarr (URL + clé API) : volontairement PAS dans le
 # code source (jamais commit sur GitHub), lue depuis un petit fichier JSON
 # local sur le LXC, même principe que la config Telegram ci-dessus.
@@ -911,7 +920,11 @@ def send_telegram_notification(message):
     try:
         import urllib.request as _urllib_request
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
+        corps = {"chat_id": chat_id, "text": message}
+        thread = load_telegram_thread()
+        if thread:
+            corps["message_thread_id"] = thread
+        payload = json.dumps(corps).encode("utf-8")
         req = _urllib_request.Request(
             url, data=payload, headers={"Content-Type": "application/json"}
         )

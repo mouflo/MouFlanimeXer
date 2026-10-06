@@ -67,7 +67,7 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 - 🔀 **Sonarr dans Docker** : correspondance de chemins réglable (ex. `/tv` ↔ `/mnt/mouflosyno/Emby-Media/Manga`)
 - 🛡️ **Sécurités** : fichier produit vérifié avant de remplacer l'original, un seul passage du surveillant à la fois, essais espacés en cas d'échec, alerte Telegram si le partage réseau n'est pas monté
 - 🗂️ **FICHIER OK rangé par série** : deux épisodes de séries différentes au même nom ne s'écrasent plus
-- 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus (à régler depuis la page ⚙️ Réglages)
+- 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus (à régler depuis la page ⚙️ Réglages) ; **un sujet par appli** possible dans un groupe Telegram à sujets (bouton « Détecter le groupe et le sujet »)
 - ⚙️ **Page Réglages** : Telegram, Sonarr et liste des dossiers, même page que dans MouFloster et MouFlopening
 - 🔄 **Auto-déploiement GitHub** : git pull auto toutes les minutes, redémarrage du service si changements
 - 🌙 **Mode sombre** : interface web responsive avec toggle clair/sombre (localStorage)
