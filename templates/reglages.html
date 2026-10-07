@@ -16,7 +16,7 @@
     <div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}" data-sub="Réglages"></div>
     <a class="back" href="/">← Retour au remux</a>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Connexions">
         <h2>📨 Telegram</h2>
         <div class="sub">Pour recevoir un message quand des fichiers sont traités ou demandent ton attention. Crée un bot avec @BotFather, écris-lui un message, puis colle ici son jeton et ton identifiant de discussion.</div>
         <div class="state" id="tgState"></div>
@@ -29,7 +29,7 @@
         <div id="tgMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Connexions">
         <h2>📺 Sonarr <small style="color:var(--muted);font-weight:400">(facultatif)</small></h2>
         <div class="sub">Après un remux, Sonarr relit la série et renomme le fichier tout seul. Sans ces réglages, il suffit de rescanner à la main.</div>
         <div class="state" id="snState"></div>
@@ -44,7 +44,7 @@
         <div id="snMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Dossiers">
         <h2>📁 Dossiers</h2>
         <div class="sub">Le dossier de travail reçoit les fichiers terminés, les copies miroir, le journal et les fichiers « À traiter ». L'appli redémarre après l'enregistrement (impossible pendant un traitement).</div>
         <div class="field"><label for="pWork">Dossier de travail</label>
