@@ -4196,6 +4196,8 @@ diag.init_app(app, APP_VERSION, build_diagnostic_report)
 import settings_page
 import redemarrage
 redemarrage.init_app(app, Path(__file__).resolve().parent)
+import redemarrer       # bouton « 🔄 Redémarrer l'appli » (fichier identique dans les quatre applis)
+redemarrer.init_app(app, lambda: ["remux en cours"] if STATE.get("is_running") else [])
 settings_page.init_app(
     app, lambda: APP_VERSION, TELEGRAM_CONFIG_PATH, SONARR_API_CONFIG_PATH,
     lambda: [("Fichiers terminés", OK_DIR), ("Copies miroir", MIRROR_ROOT_BASE), ("Sous-titres d'origine", ASS_DIR),
