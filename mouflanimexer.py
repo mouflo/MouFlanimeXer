@@ -525,6 +525,8 @@ class _LoggedList(list):
 
 import auth
 auth.init_app(app)  # page de connexion + protection de toutes les routes (v3.31)
+import apparence
+apparence.init_app(app)     # skins et couleurs au choix, par compte
 
 
 TARGET_PLAYRES = (1920, 1080)
@@ -3796,6 +3798,9 @@ TEMPLATE = """
 </style>
 <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/ui/apparence.css?v={{ version|urlencode }}">
+<script src="/ui/apparence.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 </head>
 <body>
 <div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}" data-settings="1"
