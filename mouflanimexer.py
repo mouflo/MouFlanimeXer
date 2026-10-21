@@ -1203,7 +1203,7 @@ def extract_series_name(path: Path) -> str:
         # Si parent a l'air d'un sous-dossier (S01, S1, Season 1, Specials, OVA, etc.)
         if parent and parent.lower() != WORK_ROOT.name.lower():
             # Reconnaître les dossiers de sous-type : saisons, spéciaux, OVA, bonus, films, etc.
-            if re.search(r"^s\d+$|^season\s+\d+$|^specials?$|^ova$|^oav$|^bonus|^movie", parent.lower()):
+            if re.search(r"^s\d+$|^season\s+\d+$|^saison\s+\d+$|^specials?$|^ova$|^oav$|^bonus|^movie", parent.lower()):
                 # C'est un sous-dossier → use grandparent comme série
                 if grandparent and grandparent.lower() != WORK_ROOT.name.lower():
                     series_raw = grandparent

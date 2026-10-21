@@ -48,6 +48,12 @@ class ExclusionsDatees(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in trouves), [neuf.name])
 
 
+class NomsDeSerie(unittest.TestCase):
+    def test_dossier_saison_en_francais_rattache_a_la_serie(self):
+        f = Path("/x/Naruto Shippuden Yabai/Saison 2/Naruto.S02E01.mkv")
+        self.assertEqual(m.extract_series_name(f).split(" / ")[0], "Naruto Shippuden Yabai")
+
+
 class PageExclusions(unittest.TestCase):
     def test_enregistrer_ajoute_et_retire_en_gardant_les_inconnues(self):
         with tempfile.TemporaryDirectory() as t:
