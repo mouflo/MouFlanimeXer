@@ -599,6 +599,12 @@ APP_VERSION = _get_version()   # ex. 3.31.12 (a1b2c3d) : comme MouFloster et Mou
 LOG_PATH = WORK_ROOT / "Log" / ".MouFlanimexer_log.jsonl"     # dossier créé au premier écrit (pas au démarrage : NAS peut-être absent)
 
 EXCLUDED_SERIES_PATH = Path("/opt/mouflanimexer/excluded_series.json")
+# v3.34 : deux sortes d'exclusion pour le watcher Sonarr.
+#  - EXCLUDED_ALWAYS_PATH : séries JAMAIS retouchées (ex: One Piece, style perso à conserver), quelle que soit la date du fichier.
+#  - EXCLUDED_SERIES_PATH (ancienne liste) : ne protège plus que les fichiers datés d'AVANT la date de coupure ci-dessous ;
+#    un fichier plus récent (ex: remplacé par un meilleur) est considéré comme neuf et traité.
+EXCLUDED_ALWAYS_PATH = Path("/opt/mouflanimexer/excluded_always.json")
+EXCLUSION_CUTOFF_DATE = "2026-10-03"      # inclus : les fichiers modifiés ce jour-là ou avant restent protégés
 
 # v3.19/v3.20 : exception par série pour CONSERVER une ou plusieurs
 # pistes de sous-titres supplémentaires (langue autre que le français),
@@ -1256,6 +1262,37 @@ def load_excluded_series():
         return set(json.loads(EXCLUDED_SERIES_PATH.read_text(encoding="utf-8")))
     except Exception:
         return set()
+
+def load_excluded_always():
+    try:
+        return set(json.loads(EXCLUDED_ALWAYS_PATH.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+def save_excluded_always(series_set):
+    try:
+        EXCLUDED_ALWAYS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        EXCLUDED_ALWAYS_PATH.write_text(
+            json.dumps(sorted(series_set), ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+def exclusion_cutoff_ts():
+    """Instant (heure locale) à partir duquel un fichier est « neuf » : lendemain 00:00 de EXCLUSION_CUTOFF_DATE."""
+    import datetime as _dt
+    d = _dt.date.fromisoformat(EXCLUSION_CUTOFF_DATE) + _dt.timedelta(days=1)
+    return _dt.datetime.combine(d, _dt.time.min).timestamp()
+
+def is_excluded_file(series_name, mtime, excluded=None, always=None):
+    """True si le watcher doit ignorer ce fichier : série « toujours exclue »,
+    ou série de l'ancienne liste ET fichier antérieur à la date de coupure."""
+    if always is None:
+        always = load_excluded_always()
+    if series_name in always:
+        return True
+    if excluded is None:
+        excluded = load_excluded_series()
+    return series_name in excluded and mtime < exclusion_cutoff_ts()
 
 def save_excluded_series(series_set):
     try:
@@ -2878,7 +2915,7 @@ def _iter_mkv_files(root):
                 yield Path(dirpath) / name
 
 
-def _sonarr_find_stable_new_files(watch_dirs, state, excluded_series=None):
+def _sonarr_find_stable_new_files(watch_dirs, state, excluded_series=None, excluded_always=None):
     """Parcourt les dossiers surveillés et retourne les .mkv qui : (1) ne
     sont pas déjà connus dans l'état sauvegardé avec le même mtime (déjà
     traités sans avoir été retouchés depuis), (2) sont stables depuis au
@@ -2889,6 +2926,8 @@ def _sonarr_find_stable_new_files(watch_dirs, state, excluded_series=None):
     comme One Piece)."""
     if excluded_series is None:
         excluded_series = load_excluded_series()
+    if excluded_always is None:
+        excluded_always = load_excluded_always()
     now = time.time()
     candidates = []
     state_changed = False
@@ -2905,8 +2944,8 @@ def _sonarr_find_stable_new_files(watch_dirs, state, excluded_series=None):
                 continue  # déjà traité, inchangé depuis
             if now - st.st_mtime < SONARR_STABLE_SECONDS:
                 continue  # probablement encore en cours d'import par Sonarr
-            if extract_series_name(f) in excluded_series:
-                continue  # série explicitement exclue (style perso à conserver)
+            if is_excluded_file(extract_series_name(f), st.st_mtime, excluded_series, excluded_always):
+                continue  # v3.34 : toujours exclue (style perso), ou ancien fichier d'une série exclue
             # v3.24 : mtime changé (ex: remplacement manuel par l'utilisateur
             # après vérification visuelle) ne veut pas forcément dire
             # "fichier neuf" — si le marqueur mouflanimexer est déjà présent,
@@ -2940,8 +2979,9 @@ def cli_list_series_in(watch_dirs):
         for f in _iter_mkv_files(watch_dir):
             names.add(extract_series_name(f))
     excluded = load_excluded_series()
+    always = load_excluded_always()
     for name in sorted(names):
-        marker = " [EXCLUE]" if name in excluded else ""
+        marker = " [TOUJOURS EXCLUE]" if name in always else (f" [EXCLUE jusqu'au {EXCLUSION_CUTOFF_DATE}]" if name in excluded else "")
         print(f"  {name}{marker}")
     if not names:
         print("  (aucun fichier .mkv trouvé)")
@@ -2955,12 +2995,16 @@ def cli_set_series_excluded(series_name, exclude):
     délibérément conservé (ex: One Piece) sans passer par le bouton
     "Démarrer" de l'interface web."""
     excluded = load_excluded_series()
+    always = load_excluded_always()
     if exclude:
         excluded.add(series_name)
+        always.add(series_name)      # v3.34 : une exclusion ajoutée à la main est définitive
     else:
         excluded.discard(series_name)
+        always.discard(series_name)
     save_excluded_series(excluded)
-    state = "exclue du traitement (interface web ET watcher Sonarr)" if exclude else "de nouveau incluse"
+    save_excluded_always(always)
+    state = "exclue du traitement pour toujours (interface web ET watcher Sonarr)" if exclude else "de nouveau incluse"
     print(f"'{series_name}' est maintenant {state}.")
 
 
@@ -4418,13 +4462,18 @@ def start():
         return redirect(url_for("index"))
 
     excluded = load_excluded_series()
+    always = load_excluded_always()
     for series in STATE["series_map"]:
         key = f"series::{series}"
         if request.form.get(key) == "on":
             excluded.discard(series)
+            always.discard(series)
         else:
+            if series not in excluded:
+                always.add(series)      # v3.34 : décochée à l'instant → exclue pour toujours (l'ancienne liste garde sa date)
             excluded.add(series)
     save_excluded_series(excluded)
+    save_excluded_always(always)
     STATE["excluded_series"] = excluded
 
     # v3.20 : champ "sous-titre(s) suppl. à garder" par série, saisi

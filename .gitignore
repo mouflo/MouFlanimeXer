@@ -16,3 +16,4 @@ sonarr_api_config.json
 extra_sub_lang.json
 sonarr_watch_failures.json
 sonarr_watch.lock
+excluded_always.json
