@@ -48,5 +48,26 @@ class ExclusionsDatees(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in trouves), [neuf.name])
 
 
+class PageExclusions(unittest.TestCase):
+    def test_enregistrer_ajoute_et_retire_en_gardant_les_inconnues(self):
+        with tempfile.TemporaryDirectory() as t:
+            sauve = (m.EXCLUDED_ALWAYS_PATH, m._series_bases, m.auth.is_logged_in)
+            try:
+                m.EXCLUDED_ALWAYS_PATH = Path(t) / "toujours.json"
+                m.save_excluded_always({"One Piece / S01", "One Piece / S02", "Absente / S1"})
+                m._series_bases = lambda force=False: ["One Piece", "Dr Stone", "Bleach"]
+                m.auth.is_logged_in = lambda: True
+                c = m.app.test_client()
+                self.assertIn("One Piece 🔒", c.get("/exclusions").get_data(as_text=True))
+                # One Piece décochée, Dr Stone cochée ; « Absente » (pas dans les dossiers) est gardée
+                c.post("/exclusions", data={"toujours::Dr Stone": "on"})
+                self.assertEqual(m.load_excluded_always(), {"Dr Stone", "Absente / S1"})
+                # cocher One Piece protège toutes les saisons
+                c.post("/exclusions", data={"toujours::One Piece": "on", "toujours::Dr Stone": "on"})
+                self.assertTrue(m.is_excluded_file("One Piece / S99", 10**10, set(), m.load_excluded_always()))
+            finally:
+                (m.EXCLUDED_ALWAYS_PATH, m._series_bases, m.auth.is_logged_in) = sauve
+
+
 if __name__ == "__main__":
     unittest.main()

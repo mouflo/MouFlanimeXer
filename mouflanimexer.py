@@ -1288,8 +1288,8 @@ def is_excluded_file(series_name, mtime, excluded=None, always=None):
     ou série de l'ancienne liste ET fichier antérieur à la date de coupure."""
     if always is None:
         always = load_excluded_always()
-    if series_name in always:
-        return True
+    if series_name in always or series_name.split(" / ")[0] in always:
+        return True      # v3.34 : "One Piece" seul protège toutes les saisons, "One Piece / S01" une seule
     if excluded is None:
         excluded = load_excluded_series()
     return series_name in excluded and mtime < exclusion_cutoff_ts()
@@ -3874,6 +3874,11 @@ TEMPLATE = """
   </form>
 </div>
 
+<div class="box">
+  <a href="/exclusions" class="primary" style="display:block; text-align:center; padding:12px; text-decoration:none;">🔒 Séries à exclure pour toujours</a>
+  <p style="font-size:0.8em; color:var(--muted); margin:6px 0 0;">Choisis les séries que le traitement automatique ne doit jamais retoucher (ex : One Piece).</p>
+</div>
+
 {% if files %}
 <div class="box">
   <b>{{ files|length }} fichier(s) trouvé(s) :</b>
@@ -4420,6 +4425,118 @@ def upload_font():
     STATE["is_running"] = True
     threading.Thread(target=worker_loop, daemon=True).start()
     return redirect(url_for("index"))
+
+
+_SERIES_CACHE = {"t": 0, "bases": []}
+
+
+def _series_bases(force=False):
+    """Noms de séries (sans « / Sxx ») présents dans les dossiers surveillés. Parcours du NAS ≈ 7 s : gardé 10 min en mémoire."""
+    if not force and _SERIES_CACHE["bases"] and time.time() - _SERIES_CACHE["t"] < 600:
+        return _SERIES_CACHE["bases"]
+    bases = set()
+    for d in SONARR_WATCH_DIRS:
+        if d.exists():
+            for f in _iter_mkv_files(d):
+                bases.add(extract_series_name(f).split(" / ")[0])
+    _SERIES_CACHE["bases"] = sorted(bases, key=str.lower)
+    _SERIES_CACHE["t"] = time.time()
+    return _SERIES_CACHE["bases"]
+
+
+EXCLUSIONS_TEMPLATE = """
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MouFlanimeXer · Exclusions</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanimexer.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
+__STYLE_COMMUN__
+<style>
+  .serie { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--thumb-border); }
+  .serie input { width: 22px; height: 22px; flex: none; }
+  .serie.coche { font-weight: bold; }
+  #filtre { width: 100%; font-size: 16px; padding: 10px; margin-bottom: 8px; }
+  .barre { position: sticky; bottom: 0; padding: 10px 0; background: var(--bg, #121315); }
+  @media (max-width: 480px) { body { padding: 10px; } form button { width: 100%; } }
+</style>
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/ui/apparence.css?v={{ version|urlencode }}">
+<script src="/ui/apparence.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
+</head>
+<body>
+<div id="mou-header" data-app="mouflanimexer" data-prefix="MouFl" data-rest="animeXer" data-version="v{{ version }}" data-settings="1"
+     data-sub="Séries à exclure pour toujours"></div>
+<div class="box">
+  <a href="/">← Retour</a>
+  <p>Les séries cochées ne sont <b>jamais</b> retouchées par le traitement automatique, saisons comprises. {{ nb_coches }} série(s) exclue(s).</p>
+  {% if message %}<p style="color:var(--ok, #52b54b);">{{ message }}</p>{% endif %}
+  <form method="post" action="/exclusions">
+    <input type="search" id="filtre" placeholder="Chercher une série…" autocomplete="off">
+    {% for nom in series %}
+    <label class="serie {% if nom in coches %}coche{% endif %}" data-nom="{{ nom|lower }}">
+      <input type="checkbox" name="toujours::{{ nom }}" {% if nom in coches %}checked{% endif %}>
+      <span>{{ nom }}{% if nom in coches %} 🔒{% endif %}</span>
+    </label>
+    {% endfor %}
+    {% for nom in autres %}
+    <div class="serie" data-nom="{{ nom|lower }}"><span>🔒 {{ nom }} <small style="color:var(--muted);">(absente du dossier, gardée)</small></span></div>
+    {% endfor %}
+    <div class="barre"><button class="primary" type="submit">Enregistrer</button></div>
+  </form>
+  <p style="font-size:0.8em; color:var(--muted);">Les séries de l'ancienne liste (avant le {{ date_coupure }}) restent protégées pour leurs anciens fichiers seulement ; un fichier plus récent est traité.</p>
+</div>
+<script>
+document.getElementById("filtre").addEventListener("input", function () {
+  var q = this.value.toLowerCase().trim();
+  document.querySelectorAll(".serie").forEach(function (e) {
+    e.style.display = (!q || e.dataset.nom.indexOf(q) !== -1) ? "" : "none";
+  });
+});
+</script>
+</body>
+</html>
+"""
+
+import re as _re
+_m_style = _re.search(r"<style>.*?</style>", TEMPLATE, _re.S)
+EXCLUSIONS_TEMPLATE = EXCLUSIONS_TEMPLATE.replace("__STYLE_COMMUN__", _m_style.group(0) if _m_style and "{{" not in _m_style.group(0) else "")
+
+
+def _exclusions_etat():
+    always = load_excluded_always()
+    bases = _series_bases()
+    connues = set(bases)
+    coches = {b for b in bases if b in always or any(a.split(" / ")[0] == b for a in always)}
+    autres = sorted({a for a in always if a.split(" / ")[0] not in connues}, key=str.lower)
+    return bases, coches, autres
+
+
+@app.route("/exclusions", methods=["GET"])
+@requires_auth
+def exclusions_page():
+    bases, coches, autres = _exclusions_etat()
+    return render_template_string(
+        EXCLUSIONS_TEMPLATE, series=bases, coches=coches, autres=autres, nb_coches=len(coches) + len(autres),
+        message=request.args.get("ok") and "Enregistré.", version=APP_VERSION, date_coupure=EXCLUSION_CUTOFF_DATE)
+
+
+@app.route("/exclusions", methods=["POST"])
+@requires_auth
+@_serialized
+def exclusions_save():
+    always = load_excluded_always()
+    for b in _series_bases():
+        # on repart propre pour cette série : on retire « Nom » et tous les « Nom / Sxx », puis on remet « Nom » si cochée
+        always = {a for a in always if a.split(" / ")[0] != b}
+        if request.form.get(f"toujours::{b}") == "on":
+            always.add(b)
+    save_excluded_always(always)
+    return redirect(url_for("exclusions_page", ok=1))
+
 
 @app.route("/stop", methods=["POST"])
 @requires_auth
