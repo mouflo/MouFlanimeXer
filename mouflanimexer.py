@@ -525,6 +525,8 @@ class _LoggedList(list):
 
 import auth
 auth.init_app(app)  # page de connexion + protection de toutes les routes (v3.31)
+import compression   # réponses texte compressées (gzip) : beaucoup moins de données au téléphone
+compression.init_app(app)
 import apparence
 apparence.init_app(app)     # skins et couleurs au choix, par compte
 

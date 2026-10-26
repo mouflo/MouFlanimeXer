@@ -244,6 +244,7 @@ mouflanimexer/
 - **v2.0-2.5** : Corrections heuristiques, miroir, bug PlayResX/Y
 - **v3.0-3.1** : Prise en charge PGS (OCR), Sonarr watcher, auto-déploiement GitHub
 - **v3.29** : Watcher résilient (os.walk vs rglob), notifications Telegram
+- **26 octobre 2026** : pages et réponses compressées (gzip) quand le navigateur l'accepte, beaucoup moins de données au téléphone (`compression.py`, identique dans les quatre applis)
 
 ## 🤝 Contribution
 
