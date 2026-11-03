@@ -7,7 +7,6 @@ set -e
 
 REPO_DIR="/opt/mouflanimexer"
 SERVICE_FILE="$REPO_DIR/mouflanimexer.service"
-DEPLOY_SCRIPT="$REPO_DIR/deploy.sh"
 CRON_SCRIPT="$REPO_DIR/setup-cronjob.sh"
 
 echo "🎬 Installation de MouFlanimexer"
@@ -29,7 +28,7 @@ echo "📦 Installation des dépendances Python..."
 pip install -q -r "$REPO_DIR/requirements.txt" --break-system-packages
 
 # 3. Permissions des scripts
-chmod +x "$DEPLOY_SCRIPT" "$CRON_SCRIPT"
+chmod +x "$CRON_SCRIPT"
 
 # 4. Fichiers de config locaux (jamais sur GitHub) s'ils n'existent pas déjà
 [ -f "$REPO_DIR/excluded_series.json" ] || echo "[]" > "$REPO_DIR/excluded_series.json"
@@ -58,7 +57,7 @@ else
     echo "ℹ️  État du watcher Sonarr déjà présent — pas de seed (normal sur une réinstallation)."
 fi
 
-# 7. Cronjobs (déploiement auto + watcher Sonarr)
+# 7. Cronjob (watcher Sonarr)
 echo "⏱️  Configuration des mises à jour et du watcher automatiques..."
 bash "$CRON_SCRIPT"
 
