@@ -69,7 +69,6 @@ Redimensionne les sous-titres ASS, gère les pistes audio/sous-titres multiples 
 - 🗂️ **FICHIER OK rangé par série** : deux épisodes de séries différentes au même nom ne s'écrasent plus
 - 📱 **Notifications Telegram** : alertes fichiers zappés, bugs inattendus (à régler depuis la page ⚙️ Réglages) ; **un sujet par appli** possible dans un groupe Telegram à sujets (bouton « Détecter le groupe et le sujet »)
 - ⚙️ **Page Réglages** : Telegram, Sonarr et liste des dossiers, même page que dans MouFloster et MouFlopening
-- 🔄 **Auto-déploiement GitHub** : git pull auto toutes les minutes, redémarrage du service si changements
 - 🌙 **Mode sombre** : interface web responsive avec toggle clair/sombre (localStorage)
 
 ### Formats pris en charge
@@ -144,11 +143,11 @@ systemctl status mouflanimexer
 journalctl -u mouflanimexer -f
 ```
 
-### Auto-déploiement GitHub
+### Mises à jour
 
-Ajouter à crontab root (toutes les minutes):
+Pas de mise à jour automatique depuis GitHub : les corrections se font sur le serveur, puis on pousse sur GitHub. Après un changement, redémarrer le service à la main :
 ```bash
-* * * * * /opt/mouflanimexer/deploy.sh >> /opt/mouflanimexer/deploy.log 2>&1
+systemctl restart mouflanimexer
 ```
 
 ## ⚙️ Configuration
@@ -204,11 +203,9 @@ mouflanimexer/
 ├── fonts/                    # Bibliothèque de polices (.ttf/.otf)
 ├── static/                   # CSS, JS (interface web)
 ├── templates/                # Templates HTML (Jinja2)
-├── deploy.sh                 # Script auto-déploiement GitHub
 ├── telegram_config.json      # Config Telegram (hors git)
 ├── excluded_series.json      # Séries ignorées (auto-généré)
 ├── watcher.log              # Logs du watcher Sonarr
-├── deploy.log               # Logs déploiement auto
 └── FICHIER OK/              # Fichiers traités ✅
 ```
 

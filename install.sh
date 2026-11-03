@@ -58,7 +58,7 @@ else
 fi
 
 # 7. Cronjob (watcher Sonarr)
-echo "⏱️  Configuration des mises à jour et du watcher automatiques..."
+echo "⏱️  Configuration du watcher Sonarr..."
 bash "$CRON_SCRIPT"
 
 echo ""
@@ -70,8 +70,7 @@ echo "✅ Installation terminée !"
 echo ""
 echo "🌐 Accès : http://localhost:5000"
 echo "📋 Logs app        : journalctl -u mouflanimexer -f"
-echo "📋 Logs déploiement : tail -f /var/log/mouflanimexer-deploy.log"
 echo "📋 Logs watcher     : tail -f $REPO_DIR/sonarr_watch.log"
 echo ""
-echo "Les mises à jour sont automatiques : chaque minute, le serveur vérifie"
-echo "GitHub et redéploie seul s'il y a du nouveau. Rien d'autre à faire."
+echo "Les corrections se font sur le serveur. Après un git push, redémarre à la main :"
+echo "systemctl restart mouflanimexer"

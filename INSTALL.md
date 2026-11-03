@@ -1,17 +1,16 @@
-# 🚀 Installation & Déploiement MouFlanimexer
+# 🚀 Installation de MouFlanimexer
 
 Guide complet pour installer MouFlanimexer sur un LXC Proxmox, avec démarrage
-auto, watcher Sonarr automatique, et mises à jour automatiques. **Ce fichier
+auto et watcher Sonarr automatique. **Ce fichier
 est la référence : si le serveur disparaît un jour, tout ce qu'il faut pour
 tout reconstruire à l'identique est ici, dans ce dépôt** (à l'exception des
 quelques éléments listés dans "Ce qui N'EST PAS dans ce dépôt" plus bas — à
 sauvegarder séparément).
 
 Même convention que pour les autres applications de ce compte GitHub (voir
-aussi `INSTALL.md` du dépôt MouFloster) : un dossier sous `/opt/<nom>`, un
-service systemd du même nom, et une mise à jour automatique par **cronjob**
-(pas de webhook — ça expose le serveur sur internet pour rien, voir
-l'explication dans l'`INSTALL.md` de MouFloster).
+aussi `INSTALL.md` du dépôt MouFloster) : un dossier sous `/opt/<nom>` et un
+service systemd du même nom. Les corrections se font sur le serveur, puis on
+pousse sur GitHub : GitHub n'envoie jamais rien au serveur.
 
 ## 📋 Prérequis
 
@@ -35,22 +34,21 @@ cd mouflanimexer
 cp telegram_config.json.example telegram_config.json
 nano telegram_config.json   # renseigne bot_token et chat_id
 
-# 3. Installe tout : dépendances, service, watcher, mises à jour auto
+# 3. Installe tout : dépendances, service, watcher Sonarr
 chmod +x install.sh
 bash install.sh
 ```
 
 **C'est tout.** Le service démarre, se relance seul au boot, le watcher
-Sonarr tourne toutes les 2 minutes, et le code se met à jour seul dès qu'un
-nouveau commit arrive sur GitHub — sans aucune autre manipulation.
+Sonarr tourne toutes les 2 minutes. Après une correction faite sur le
+serveur et poussée sur GitHub, redémarre le service à la main :
+`systemctl restart mouflanimexer`.
 
 ## 📊 Vérifier le statut
 
 ```bash
 systemctl status mouflanimexer              # l'appli tourne ?
 journalctl -u mouflanimexer -f               # logs en direct de l'appli
-tail -f /var/log/mouflanimexer-deploy.log    # logs des déploiements
-tail -f /var/log/mouflanimexer-cron.log      # logs bruts de la cronjob de déploiement
 tail -f /opt/mouflanimexer/sonarr_watch.log  # logs du watcher Sonarr
 ```
 
@@ -60,20 +58,18 @@ tail -f /opt/mouflanimexer/sonarr_watch.log  # logs du watcher Sonarr
 
 ## 🤖 Automatisation en place
 
-`setup-cronjob.sh` (déjà lancé par `install.sh`) installe deux lignes dans
-la crontab root — **en les ajoutant à celles déjà présentes, jamais en les
+`setup-cronjob.sh` (déjà lancé par `install.sh`) ajoute une ligne à la
+crontab root — **en l'ajoutant à celles déjà présentes, jamais en les
 remplaçant**, pour ne jamais effacer la cronjob d'une autre appli (ex:
 Moufloster) :
 
 ```
-*/1 * * * * bash /opt/mouflanimexer/deploy.sh >> /var/log/mouflanimexer-cron.log 2>&1
 */2 * * * * cd /opt/mouflanimexer && /usr/bin/python3 mouflanimexer.py --watch-sonarr >> /opt/mouflanimexer/sonarr_watch.log 2>&1
 ```
 
-1. **`deploy.sh`** (chaque minute) : compare le commit local à GitHub,
-   et s'il y a du neuf, télécharge (`git reset --hard`) + redémarre le
-   service.
-2. **`--watch-sonarr`** (toutes les 2 min) : parcourt le dossier manga
+Il n'y a plus de mise à jour automatique depuis GitHub (supprimée le 03/11/2026).
+
+1. **`--watch-sonarr`** (toutes les 2 min) : parcourt le dossier manga
    (`SONARR_WATCH_DIRS` dans le code) à la recherche de nouveaux épisodes
    stables depuis au moins 2 min, et les traite automatiquement (remux
    audio/sous-titres). Un fichier qu'il ne peut pas traiter sans décision
@@ -81,7 +77,7 @@ Moufloster) :
    Depuis la v3.29, un dossier qui disparaît en cours de scan (ex: Sonarr
    renomme une série en même temps) ne fait plus planter le process.
 
-Pour réinstaller ces cronjobs à la main (normalement jamais nécessaire) :
+Pour réinstaller cette cronjob à la main (normalement jamais nécessaire) :
 ```bash
 bash /opt/mouflanimexer/setup-cronjob.sh
 ```
@@ -133,13 +129,6 @@ python3 /opt/mouflanimexer/mouflanimexer.py --watch-sonarr   # test manuel, affi
 tail -50 /opt/mouflanimexer/sonarr_watch.log
 ```
 
-**Les mises à jour ne se font pas ?**
-```bash
-bash /opt/mouflanimexer/deploy.sh       # test manuel, affiche l'erreur
-crontab -l                                # les 2 lignes mouflanimexer sont bien là ?
-cat /var/log/mouflanimexer-deploy.log
-```
-
 ## 📝 Fichiers importants (tous dans ce dépôt)
 
 ```
@@ -147,8 +136,7 @@ cat /var/log/mouflanimexer-deploy.log
 ├── mouflanimexer.py              # Application principale (web + watcher Sonarr)
 ├── requirements.txt              # Dépendances Python
 ├── mouflanimexer.service         # Service systemd — SOURCE DE VÉRITÉ, à copier dans /etc/systemd/system/
-├── deploy.sh                     # Script de déploiement (lancé par cron chaque minute)
-├── setup-cronjob.sh              # Installe les 2 lignes cron ci-dessus (idempotent)
+├── setup-cronjob.sh              # Installe la ligne cron du watcher Sonarr (idempotent)
 ├── install.sh                    # Installation complète en une commande sur machine neuve
 └── telegram_config.json.example  # Modèle pour activer les notifications Telegram
 ```
@@ -174,7 +162,7 @@ perdu, ils ne reviendront pas avec un simple `git clone` :
 
 ## 🎯 Intégration avec Moufloster
 
-Les deux apps tournent sur le même LXC, même convention de déploiement :
+Les deux apps tournent sur le même LXC, même convention d'installation :
 - **MouFlanimexer** : `/opt/mouflanimexer`, service `mouflanimexer`, port 5000
 - **Moufloster** : `/opt/moufloster`, service `moufloster`, port 8000
 
